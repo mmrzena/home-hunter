@@ -2,15 +2,19 @@
 
 import "maplibre-gl/dist/maplibre-gl.css";
 import maplibregl from "maplibre-gl";
+import { useTheme } from "next-themes";
 import { useEffect, useRef } from "react";
 
 import { formatArea, formatKind, formatPrice } from "@/lib/format";
 import { markerTone, TONE_HEX } from "@/lib/listing-status";
 import type { AppConfig, ClusterCard } from "@/lib/types";
 
-// Free, no-key CARTO Positron — a clean, light basemap that keeps the colored
-// markers legible and never goes too dark (used in both themes).
-const STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+// Free, no-key CARTO basemaps — clean Positron in light, matching Dark Matter
+// in dark. Both keep the colored markers legible.
+const LIGHT_STYLE =
+  "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+const DARK_STYLE =
+  "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 const PRAGUE: [number, number] = [14.45, 50.0];
 
 function escapeHtml(value: string): string {
@@ -57,8 +61,13 @@ export function ListingMap({
   onSelect: (id: number) => void;
   anchor: AppConfig["anchor"];
 }) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  // Init reads the live theme without re-running its empty-dep effect.
+  const isDarkRef = useRef(isDark);
+  isDarkRef.current = isDark;
   const markersRef = useRef<Map<number, maplibregl.Marker>>(new Map());
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const onSelectRef = useRef(onSelect);
@@ -88,7 +97,7 @@ export function ListingMap({
     if (!containerRef.current) return;
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: STYLE,
+      style: isDarkRef.current ? DARK_STYLE : LIGHT_STYLE,
       center: PRAGUE,
       zoom: 8,
       attributionControl: { compact: true },
@@ -100,6 +109,12 @@ export function ListingMap({
       mapRef.current = null;
     };
   }, []);
+
+  // Swap the basemap when the theme toggles. DOM-based markers and the popup
+  // live outside the style, so they survive setStyle untouched.
+  useEffect(() => {
+    mapRef.current?.setStyle(isDark ? DARK_STYLE : LIGHT_STYLE);
+  }, [isDark]);
 
   // Rebuild markers whenever the cluster set changes.
   useEffect(() => {
