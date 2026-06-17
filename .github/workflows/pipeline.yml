@@ -1,0 +1,34 @@
+# Runs the ingest pipeline against the cloud DB (Neon). The worker can't live on
+# Vercel (long jobs + sharp), so it runs here: nightly + on-demand.
+#
+# Setup: add a repo secret DATABASE_URL = your Neon pooled connection string
+# (Settings → Secrets and variables → Actions). PostGIS lives in Neon, so this
+# job only needs Node + network.
+name: pipeline
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # ~06:00 Prague (UTC+2 summer / 05:00 winter)
+  workflow_dispatch: {} # manual "Run workflow" button
+
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Optional: tune ingest here (defaults are fine).
+      # INGEST_MAX_PAGES: "40"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+      - run: npm run pipeline

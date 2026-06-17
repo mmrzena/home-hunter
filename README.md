@@ -114,6 +114,7 @@ are labeled "low confidence".
 | Var | Default | Meaning |
 | --- | --- | --- |
 | `DATABASE_URL` | local compose | Postgres + PostGIS connection (override for Neon) |
+| `DB_POOL_MAX` | `10` | connection-pool size (set `1` on Vercel serverless) |
 | `ANCHOR_LAT` / `ANCHOR_LNG` / `ANCHOR_LABEL` | — | optional anchor for commute distance + bearing |
 | `ENABLE_BEZREALITKY` | `false` | turn on the (stubbed) second source |
 | `INGEST_MAX_PAGES` | `40` | page cap per region per run |
@@ -121,13 +122,28 @@ are labeled "low confidence".
 | `MAX_IMAGES_PER_LISTING` | `8` | images hashed per listing |
 | `FEED_WINDOW_HOURS` | `48` | "new / price-changed" window |
 
-## Deploying
+## Deploying (hybrid: Vercel + Neon + GitHub Actions)
 
-The code is kept portable for a **hybrid Vercel deploy**: the Next app → Vercel,
-Postgres → **Vercel Postgres / Neon** (enable the `postgis` extension), and the
-**worker can't run on Vercel** (long jobs + `sharp`) — run it as a scheduled job
-elsewhere (GitHub Actions nightly, a small always-on host) against the same DB.
-Local dev uses docker-compose throughout.
+The web app can run on Vercel, but the ingest worker can't (long jobs + `sharp`),
+so it runs as a scheduled GitHub Actions job. All three share one cloud DB.
+
+1. **Database — Neon** (or Vercel Postgres, which is Neon). Create a project,
+   then `CREATE EXTENSION IF NOT EXISTS postgis;` (the migrate also does this).
+   Grab the **pooled** connection string (host has `-pooler`, `?sslmode=require`).
+   Seed it from your machine:
+   ```bash
+   DATABASE_URL="<neon-pooled-url>" npm run db:migrate
+   DATABASE_URL="<neon-pooled-url>" npm run pipeline   # first data load
+   ```
+2. **Web — Vercel.** Import the repo, set env `DATABASE_URL` = the Neon URL and
+   `DB_POOL_MAX=1` (serverless). Optional `ANCHOR_*`. Default `next build`. Tiles
+   + thumbnails are key-free, so nothing else to configure.
+3. **Worker — GitHub Actions.** Add a repo secret `DATABASE_URL` (the Neon URL);
+   `.github/workflows/pipeline.yml` runs `db:migrate` + `pipeline` nightly and
+   on-demand (Actions → "pipeline" → Run workflow).
+
+Local dev uses docker-compose throughout; `engines.node` is `>=22` for Vercel
+compatibility (local dev still uses Node 24 via `.nvmrc`).
 
 ## A note on the data
 

@@ -16,6 +16,10 @@ const envSchema = z.object({
     .string()
     .default("postgres://hunter:hunter@localhost:5432/hunter"),
 
+  // Connection-pool size. Keep high for the worker (batch); set to 1 on Vercel
+  // serverless, where each function instance has its own pool behind Neon's pooler.
+  DB_POOL_MAX: z.coerce.number().int().positive().default(10),
+
   // Optional anchor point for straight-line commute distance + bearing.
   ANCHOR_LAT: z.coerce.number().min(-90).max(90).optional(),
   ANCHOR_LNG: z.coerce.number().min(-180).max(180).optional(),

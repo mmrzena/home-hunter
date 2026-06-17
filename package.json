@@ -26,7 +26,7 @@
     "score": "tsx worker/cli.ts score"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=22"
   },
   "packageManager": "npm@11.13.0",
   "dependencies": {

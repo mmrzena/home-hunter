@@ -15,7 +15,7 @@ const globalForDb = globalThis as unknown as {
 export const sql =
   globalForDb.__hunterSql ??
   postgres(env.DATABASE_URL, {
-    max: 10,
+    max: env.DB_POOL_MAX,
     // postgres-js parses int8 (bigint) columns to JS string by default for
     // safety; Drizzle's bigint({mode}) handles the conversion per-column.
   });
