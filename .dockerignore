@@ -1,0 +1,8 @@
+node_modules
+.next
+.git
+storybook-static
+*.log
+.env
+.env*.local
+*.tsbuildinfo

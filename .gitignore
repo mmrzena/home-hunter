@@ -1,0 +1,17 @@
+node_modules
+.next
+out
+storybook-static
+*.log
+.DS_Store
+.env
+.env*.local
+*.tsbuildinfo
+*.tgz
+next-env.d.ts
+
+# Claude Code — your global ~/.gitignore ignores all of .claude/.
+# Re-include it here so the shared skills ship with the repo, but keep
+# machine-local settings out.
+!.claude/
+.claude/settings.local.json

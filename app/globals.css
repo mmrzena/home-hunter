@@ -1,0 +1,55 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "../src/styles/theme.css";
+
+@source "../app";
+@source "../src";
+
+@layer components {
+  /*
+   * Recharts overrides for charts wrapped in <ChartContainer> (data-slot="chart").
+   * Extracted from the wrapper's className arbitrary-variants — descendant
+   * selectors against a third-party library's SVG belong in CSS, not in cn().
+   */
+  [data-slot="chart"] {
+    /* Suppress focus rings and stray outlines on recharts' focusable SVG nodes. */
+    :focus,
+    :focus-visible,
+    .recharts-layer,
+    .recharts-sector,
+    .recharts-surface {
+      outline: none;
+    }
+
+    /* Axis ticks track the theme (fallback; charts also pass tick={AXIS_TICK}). */
+    .recharts-cartesian-axis-tick text {
+      fill: var(--muted-foreground);
+    }
+
+    /* Grid / polar / reference lines use the border token instead of recharts' #ccc. */
+    .recharts-cartesian-grid line[stroke="#ccc"] {
+      stroke: color-mix(in oklab, var(--border) 50%, transparent);
+    }
+    .recharts-polar-grid [stroke="#ccc"],
+    .recharts-reference-line [stroke="#ccc"] {
+      stroke: var(--border);
+    }
+
+    /* Tooltip cursor (line + rectangle variants). */
+    .recharts-curve.recharts-tooltip-cursor {
+      stroke: var(--border);
+    }
+    .recharts-rectangle.recharts-tooltip-cursor {
+      fill: var(--muted);
+    }
+
+    /* Radial background sector + white-stroked dots/sectors. */
+    .recharts-radial-bar-background-sector {
+      fill: var(--muted);
+    }
+    .recharts-dot[stroke="#fff"],
+    .recharts-sector[stroke="#fff"] {
+      stroke: transparent;
+    }
+  }
+}

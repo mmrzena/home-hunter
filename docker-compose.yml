@@ -1,0 +1,55 @@
+# home-hunter local stack.
+#
+# Common path — just the database, run web + worker from your shell:
+#   npm run db:up          # postgis only
+#   npm run db:migrate && npm run db:seed
+#   npm run dev            # web at :3000
+#   npm run pipeline       # ingest -> dedupe -> score, once
+#
+# Full containerized run (web + worker too):
+#   docker compose --profile full up -d --build
+
+services:
+  postgis:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: hunter
+      POSTGRES_PASSWORD: hunter
+      POSTGRES_DB: hunter
+    ports:
+      - "5432:5432"
+    volumes:
+      - hunter-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hunter -d hunter"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      DATABASE_URL: postgres://hunter:hunter@postgis:5432/hunter
+      ENABLE_BEZREALITKY: ${ENABLE_BEZREALITKY:-false}
+    depends_on:
+      postgis:
+        condition: service_healthy
+
+  web:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    environment:
+      DATABASE_URL: postgres://hunter:hunter@postgis:5432/hunter
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgis:
+        condition: service_healthy
+
+volumes:
+  hunter-pgdata:

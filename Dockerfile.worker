@@ -1,0 +1,17 @@
+# Ingest/dedupe/score worker. Node 24 (glibc) so sharp uses its prebuilt binary.
+FROM node:24-slim
+
+WORKDIR /app
+
+# System libs sharp's prebuilt binary expects are bundled, but keep ca-certs
+# fresh for HTTPS calls to the source APIs.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+
+# Default: the cron daemon (daily ingest + nightly dedupe/score).
+CMD ["npm", "run", "worker"]
