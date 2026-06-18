@@ -8,6 +8,7 @@ import {
   RiBuilding2Line,
   RiCloseLine,
   RiExternalLinkLine,
+  RiGroupLine,
   RiMapPin2Line,
   RiStarFill,
   RiStarLine,
@@ -27,6 +28,7 @@ import {
   formatDistance,
   formatKind,
   formatPerM2,
+  formatPopulation,
   formatPrice,
   formatPriceCompact,
 } from "@/lib/format";
@@ -105,6 +107,18 @@ export function ClusterCard({
             </div>
           )}
 
+          {/* On a wide panel there's room for a second photo — more of the
+              house at a glance without expanding. */}
+          {card.photos[1] && (
+            // biome-ignore lint/performance/noImgElement: hot-linked CDN thumbnail, not bundled
+            <img
+              src={card.photos[1]}
+              alt=""
+              loading="lazy"
+              className="hidden size-24 shrink-0 rounded-md object-cover @xl:block"
+            />
+          )}
+
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5 pr-14">
               {badge && (
@@ -149,8 +163,21 @@ export function ClusterCard({
               )}
             </div>
 
-            {(card.pragueKm != null || card.nearestStationKm != null) && (
+            {(card.pragueKm != null ||
+              card.nearestStationKm != null ||
+              card.population != null) && (
               <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                {card.population != null && (
+                  <span
+                    className="flex items-center gap-1"
+                    title={card.settlementClass ?? undefined}
+                  >
+                    <RiGroupLine className="size-3.5 shrink-0" />
+                    <span className="font-mono">
+                      {formatPopulation(card.population)}
+                    </span>
+                  </span>
+                )}
                 {card.pragueKm != null && (
                   <span className="flex items-center gap-1">
                     <RiBuilding2Line className="size-3.5 shrink-0" />

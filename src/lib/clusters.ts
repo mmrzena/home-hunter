@@ -1,5 +1,6 @@
 import { sql } from "@/db";
 import { anchor, env } from "@/lib/env";
+import { placeInfo } from "@/lib/places";
 import { distanceToPragueKm, nearestStation } from "@/lib/stations";
 import type { ClusterCard, SortKey } from "@/lib/types";
 
@@ -47,6 +48,11 @@ function toCard(row: any): ClusterCard {
     row.lat != null && row.lng != null
       ? nearestStation(row.lat, row.lng)
       : null;
+  const place = placeInfo(
+    row.lat,
+    row.lng,
+    row.cadastral_name ?? row.locality_text,
+  );
   return {
     clusterId: row.cluster_id,
     listingId: row.listing_id,
@@ -90,6 +96,8 @@ function toCard(row: any): ClusterCard {
         : null,
     nearestStationKm: station?.km ?? null,
     nearestStationName: station?.name ?? null,
+    population: place.population,
+    settlementClass: place.settlementClass,
     members: row.members ?? [],
   };
 }

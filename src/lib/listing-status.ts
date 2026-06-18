@@ -7,7 +7,7 @@ export function statusBadge(
   card: ClusterCard,
 ): { label: string; tone: Tone } | null {
   if (card.scamScore != null && card.scamScore >= 30)
-    return { label: `Caution ${card.scamScore}`, tone: "caution" };
+    return { label: `Caution · risk ${card.scamScore}/100`, tone: "caution" };
   if (card.isGoodDeal) return { label: "Good deal", tone: "deal" };
   if (card.dealVerdict === "overpriced")
     return { label: "Overpriced", tone: "overpriced" };

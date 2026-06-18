@@ -30,6 +30,15 @@ export function formatDistance(km: number | null | undefined): string {
     : `${Math.round(km)} km`;
 }
 
+/** Population, compacted for big places: "850", "12k", "1.4M". */
+export function formatPopulation(value: number | null | undefined): string {
+  if (value == null) return "—";
+  if (value >= 1_000_000)
+    return `${(value / 1_000_000).toFixed(1).replace(".", ",")}M`;
+  if (value >= 10_000) return `${Math.round(value / 1000)}k`;
+  return czk.format(value);
+}
+
 export function formatKind(kind: string | null | undefined): string {
   if (kind === "vila") return "Vila";
   if (kind === "rodinny_dum") return "Rodinný dům";

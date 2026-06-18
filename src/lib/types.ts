@@ -54,6 +54,10 @@ export type ClusterCard = {
   nearestStationKm: number | null;
   nearestStationName: string | null;
 
+  /** Settlement size for the listing's locality (computed server-side). */
+  population: number | null;
+  settlementClass: string | null;
+
   /** Every listing in the cluster — the "also listed at" sources. */
   members: ClusterMember[];
 };

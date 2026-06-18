@@ -18,7 +18,7 @@ function toRadians(degrees: number): number {
   return (degrees * Math.PI) / 180;
 }
 
-function haversineKm(
+export function haversineKm(
   lat1: number,
   lng1: number,
   lat2: number,

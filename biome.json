@@ -13,7 +13,8 @@
       "!**/dist",
       "!**/package-lock.json",
       "!**/next-env.d.ts",
-      "!src/lib/stations.json"
+      "!src/lib/stations.json",
+      "!src/lib/places.json"
     ]
   },
   "formatter": {
