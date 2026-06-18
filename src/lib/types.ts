@@ -40,6 +40,7 @@ export type ClusterCard = {
 
   photo: string | null;
   photos: string[];
+  description: string | null;
   firstSeenAt: string;
   isNew: boolean;
 
@@ -47,6 +48,11 @@ export type ClusterCard = {
   sellerType: string | null;
 
   distanceKm: number | null;
+
+  /** Distance to Prague centre + nearest railway station (computed server-side). */
+  pragueKm: number | null;
+  nearestStationKm: number | null;
+  nearestStationName: string | null;
 
   /** Every listing in the cluster — the "also listed at" sources. */
   members: ClusterMember[];

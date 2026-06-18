@@ -21,7 +21,6 @@ import type { AppConfig, ClusterCard } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 import { ClusterCard as Card } from "./cluster-card";
-import { ClusterDetailSheet } from "./cluster-detail-sheet";
 import { FilterBar } from "./filter-bar";
 import { ShortcutsDialog } from "./shortcuts-dialog";
 import { useKeyboardNav } from "./use-keyboard-nav";
@@ -51,7 +50,7 @@ export function HomeScreen() {
   const searchParams = useSearchParams();
   const query = searchParams.toString();
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [detailId, setDetailId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [view, setView] = useState<TriageView>("all");
   const [helpOpen, setHelpOpen] = useState(false);
@@ -67,11 +66,12 @@ export function HomeScreen() {
     });
   }, []);
 
-  // Map marker → light select (popup peek). Feed card → open full detail.
-  const handleOpenDetail = useCallback(
+  // Feed card click → select + toggle its inline detail. Map marker click only
+  // selects + scrolls the feed to it (lighter; no auto-expand).
+  const handleToggleExpand = useCallback(
     (id: number) => {
       selectAndScroll(id);
-      setDetailId(id);
+      setExpandedId((current) => (current === id ? null : id));
     },
     [selectAndScroll],
   );
@@ -110,8 +110,6 @@ export function HomeScreen() {
     [cards, view, shortlisted, hidden],
   );
 
-  const detailCard = cards.find((card) => card.clusterId === detailId) ?? null;
-
   const deals = visible.filter((card) => card.isGoodDeal).length;
   const cautions = visible.filter(
     (card) => card.scamScore != null && card.scamScore >= 30,
@@ -122,12 +120,12 @@ export function HomeScreen() {
     ids: visible.map((card) => card.clusterId),
     selectedId,
     onSelect: selectAndScroll,
-    onOpenDetail: handleOpenDetail,
+    onOpenDetail: handleToggleExpand,
     onShortlist: (id) => triageStore.toggleShortlist(id),
     onHide: (id) => triageStore.hide(id),
     onRefresh: () => clusters.refetch(),
     onClear: () => {
-      if (detailId != null) setDetailId(null);
+      if (expandedId != null) setExpandedId(null);
       else setSelectedId(null);
     },
     onToggleHelp: () => setHelpOpen((open) => !open),
@@ -253,7 +251,8 @@ export function HomeScreen() {
                   isSelected={card.clusterId === selectedId}
                   isShortlisted={shortlisted.has(card.clusterId)}
                   isHidden={hidden.has(card.clusterId)}
-                  onSelect={handleOpenDetail}
+                  isExpanded={card.clusterId === expandedId}
+                  onSelect={handleToggleExpand}
                   onToggleShortlist={(id) => triageStore.toggleShortlist(id)}
                   onToggleHide={handleToggleHide}
                   onHover={setHoveredId}
@@ -284,15 +283,6 @@ export function HomeScreen() {
           </div>
         </div>
       </div>
-
-      <ClusterDetailSheet
-        card={detailCard}
-        open={detailId != null}
-        onOpenChange={(next) => {
-          if (!next) setDetailId(null);
-        }}
-        anchorLabel={anchor?.label ?? null}
-      />
 
       <ShortcutsDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </div>

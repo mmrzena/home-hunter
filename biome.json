@@ -12,7 +12,8 @@
       "!**/.next",
       "!**/dist",
       "!**/package-lock.json",
-      "!**/next-env.d.ts"
+      "!**/next-env.d.ts",
+      "!src/lib/stations.json"
     ]
   },
   "formatter": {

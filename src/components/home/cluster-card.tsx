@@ -2,15 +2,26 @@
 
 import {
   RiAlertLine,
+  RiArrowDownSLine,
   RiArrowGoBackLine,
+  RiArrowRightUpLine,
+  RiBuilding2Line,
   RiCloseLine,
   RiExternalLinkLine,
   RiMapPin2Line,
   RiStarFill,
   RiStarLine,
+  RiTrainLine,
 } from "@remixicon/react";
 
 import { Badge } from "@/components/ui/badge";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 import {
   formatArea,
   formatDistance,
@@ -25,12 +36,16 @@ import { cn } from "@/lib/utils";
 
 import { PercentileMeter } from "./percentile-meter";
 
+// Within ~1.5 km is a comfortable walk to the station — flag it as "near train".
+const CLOSE_TO_TRAIN_KM = 1.5;
+
 export function ClusterCard({
   card,
   anchorLabel,
   isSelected,
   isShortlisted,
   isHidden,
+  isExpanded,
   onSelect,
   onToggleShortlist,
   onToggleHide,
@@ -41,6 +56,7 @@ export function ClusterCard({
   isSelected: boolean;
   isShortlisted: boolean;
   isHidden: boolean;
+  isExpanded: boolean;
   onSelect: (id: number) => void;
   onToggleShortlist: (id: number) => void;
   onToggleHide: (id: number) => void;
@@ -123,6 +139,30 @@ export function ClusterCard({
             )}
           </div>
 
+          {(card.pragueKm != null || card.nearestStationKm != null) && (
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+              {card.pragueKm != null && (
+                <span className="flex items-center gap-1">
+                  <RiBuilding2Line className="size-3.5 shrink-0" />
+                  {formatDistance(card.pragueKm)} to Prague
+                </span>
+              )}
+              {card.nearestStationKm != null && (
+                <span
+                  className={cn(
+                    "flex items-center gap-1",
+                    card.nearestStationKm <= CLOSE_TO_TRAIN_KM &&
+                      "font-medium text-green-700 dark:text-green-400",
+                  )}
+                >
+                  <RiTrainLine className="size-3.5 shrink-0" />
+                  {formatDistance(card.nearestStationKm)}
+                  {card.nearestStationName && ` · ${card.nearestStationName}`}
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="mt-1.5">
             <PercentileMeter
               percentile={card.percentile}
@@ -167,6 +207,12 @@ export function ClusterCard({
             )}
           </div>
         </div>
+        <RiArrowDownSLine
+          className={cn(
+            "size-5 shrink-0 self-center text-muted-foreground/60 transition-transform",
+            isExpanded && "rotate-180",
+          )}
+        />
       </button>
 
       {/* Triage actions — siblings of the card button (not nested), so the
@@ -209,6 +255,74 @@ export function ClusterCard({
           )}
         </button>
       </div>
+
+      {/* Inline detail — gallery, description, and the cross-portal sources.
+          Siblings of the summary button, so interacting here never toggles it. */}
+      {isExpanded && (
+        <div className="space-y-3 border-t px-3 pt-3 pb-3">
+          {card.photos.length > 0 && (
+            <Carousel className="w-full">
+              <CarouselContent>
+                {card.photos.map((src) => (
+                  <CarouselItem key={src}>
+                    {/* biome-ignore lint/performance/noImgElement: hot-linked CDN thumbnail */}
+                    <img
+                      src={src}
+                      alt=""
+                      loading="lazy"
+                      className="h-44 w-full rounded-md bg-muted object-cover"
+                    />
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+              {card.photos.length > 1 && (
+                <>
+                  <CarouselPrevious className="left-2" />
+                  <CarouselNext className="right-2" />
+                </>
+              )}
+            </Carousel>
+          )}
+
+          {card.description && (
+            <p className="line-clamp-6 text-sm text-muted-foreground">
+              {card.description}
+            </p>
+          )}
+
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+              Listed at {card.memberCount}{" "}
+              {card.memberCount === 1 ? "place" : "places"}
+            </p>
+            <ul className="space-y-1">
+              {card.members.map((member) => (
+                <li
+                  key={`${member.source}:${member.sourceId}`}
+                  className="flex items-center justify-between gap-2 text-sm"
+                >
+                  <span className="capitalize">{member.source}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-muted-foreground">
+                      {formatPrice(member.price)}
+                    </span>
+                    {member.url && (
+                      <a
+                        href={member.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary hover:underline"
+                      >
+                        <RiArrowRightUpLine className="size-4" />
+                      </a>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

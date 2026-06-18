@@ -1,5 +1,6 @@
 import { sql } from "@/db";
 import { anchor, env } from "@/lib/env";
+import { distanceToPragueKm, nearestStation } from "@/lib/stations";
 import type { ClusterCard, SortKey } from "@/lib/types";
 
 export type ClusterFilters = {
@@ -37,6 +38,10 @@ function orderBy(sort: SortKey, distance: Fragment): Fragment {
 /** One cluster row → card. postgres-js parses jsonb and returns numerics as JS numbers. */
 // biome-ignore lint/suspicious/noExplicitAny: row shape is the SELECT below
 function toCard(row: any): ClusterCard {
+  const station =
+    row.lat != null && row.lng != null
+      ? nearestStation(row.lat, row.lng)
+      : null;
   return {
     clusterId: row.cluster_id,
     listingId: row.listing_id,
@@ -68,11 +73,18 @@ function toCard(row: any): ClusterCard {
     priceDropPct: row.price_drop_pct,
     photo: row.photo,
     photos: row.photos ?? [],
+    description: row.description,
     firstSeenAt: row.first_seen_at,
     isNew: row.is_new,
     sellerName: row.seller_name,
     sellerType: row.seller_type,
     distanceKm: row.distance_km,
+    pragueKm:
+      row.lat != null && row.lng != null
+        ? distanceToPragueKm(row.lat, row.lng)
+        : null,
+    nearestStationKm: station?.km ?? null,
+    nearestStationName: station?.name ?? null,
     members: row.members ?? [],
   };
 }
@@ -125,6 +137,7 @@ export async function getClusters(
       rep.photos                      AS photos,
       rep.first_seen_at               AS first_seen_at,
       (rep.first_seen_at > now() - make_interval(hours => ${env.FEED_WINDOW_HOURS})) AS is_new,
+      rep.description,
       rep.seller_name, rep.seller_type,
       ${distance}                     AS distance_km,
       (
