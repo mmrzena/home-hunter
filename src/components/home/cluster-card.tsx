@@ -31,6 +31,7 @@ import {
   formatPopulation,
   formatPrice,
   formatPriceCompact,
+  formatSource,
 } from "@/lib/format";
 import { statusBadge, TONE_BADGE } from "@/lib/listing-status";
 import type { ClusterCard as Card } from "@/lib/types";
@@ -246,7 +247,8 @@ export function ClusterCard({
                   onClick={(event) => event.stopPropagation()}
                   className="inline-flex shrink-0 items-center gap-1 text-primary hover:underline"
                 >
-                  Sreality <RiExternalLinkLine className="size-3" />
+                  {formatSource(card.source)}{" "}
+                  <RiExternalLinkLine className="size-3" />
                 </a>
               )}
             </div>
@@ -355,7 +357,7 @@ export function ClusterCard({
                   key={`${member.source}:${member.sourceId}`}
                   className="flex items-center justify-between gap-2 text-sm"
                 >
-                  <span className="capitalize">{member.source}</span>
+                  <span>{formatSource(member.source)}</span>
                   <span className="flex items-center gap-2">
                     <span className="text-muted-foreground">
                       {formatPrice(member.price)}

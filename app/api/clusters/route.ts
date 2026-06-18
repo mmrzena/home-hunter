@@ -29,6 +29,9 @@ export async function GET(request: NextRequest) {
     maxUsable: number("maxUsable"),
     minLand: number("minLand"),
     areas: params.getAll("area").length ? params.getAll("area") : undefined,
+    sources: params.getAll("source").length
+      ? params.getAll("source")
+      : undefined,
     verdict:
       verdict && VERDICTS.has(verdict)
         ? (verdict as ClusterFilters["verdict"])

@@ -44,3 +44,14 @@ export function formatKind(kind: string | null | undefined): string {
   if (kind === "rodinny_dum") return "Rodinný dům";
   return "Dům";
 }
+
+const SOURCE_LABELS: Record<string, string> = {
+  sreality: "Sreality",
+  bezrealitky: "Bezrealitky",
+  ceskereality: "České reality",
+};
+
+/** Source key → portal display name (falls back to the raw key). */
+export function formatSource(source: string): string {
+  return SOURCE_LABELS[source] ?? source;
+}

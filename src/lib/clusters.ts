@@ -10,6 +10,7 @@ export type ClusterFilters = {
   maxUsable?: number;
   minLand?: number;
   areas?: string[];
+  sources?: string[];
   verdict?: "deal" | "fair" | "overpriced";
   goodDealsOnly?: boolean;
   freshOnly?: boolean;
@@ -119,6 +120,12 @@ export async function getClusters(
   if (filters.minLand) conds.push(sql`rep.land_area_m2 >= ${filters.minLand}`);
   if (filters.areas?.length)
     conds.push(sql`rep.cadastral_code = ANY(${filters.areas})`);
+  // Match clusters that carry a listing from the source(s) — not just the
+  // representative, since the same house is often repped by a different portal.
+  if (filters.sources?.length)
+    conds.push(
+      sql`EXISTS (SELECT 1 FROM listings m WHERE m.cluster_id = c.id AND m.source = ANY(${filters.sources}))`,
+    );
   if (filters.verdict) conds.push(sql`rep.deal_verdict = ${filters.verdict}`);
   if (filters.goodDealsOnly) conds.push(sql`rep.is_good_deal`);
   if (filters.kind) conds.push(sql`rep.property_kind = ${filters.kind}`);
