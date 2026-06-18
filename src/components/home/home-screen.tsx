@@ -13,6 +13,11 @@ import { useCallback, useMemo, useState } from "react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { TONE_DOT, type Tone } from "@/lib/listing-status";
@@ -23,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { ClusterCard as Card } from "./cluster-card";
 import { FilterBar } from "./filter-bar";
 import { ShortcutsDialog } from "./shortcuts-dialog";
+import { useIsDesktop } from "./use-is-desktop";
 import { useKeyboardNav } from "./use-keyboard-nav";
 
 const ListingMap = dynamic(
@@ -54,6 +60,7 @@ export function HomeScreen() {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [view, setView] = useState<TriageView>("all");
   const [helpOpen, setHelpOpen] = useState(false);
+  const isDesktop = useIsDesktop();
 
   const { shortlisted, hidden } = useTriage();
 
@@ -66,8 +73,8 @@ export function HomeScreen() {
     });
   }, []);
 
-  // Feed card click → select + toggle its inline detail. Map marker click only
-  // selects + scrolls the feed to it (lighter; no auto-expand).
+  // The chevron (and keyboard "o") toggle the inline detail. A plain click on
+  // the card body or a map marker only selects — it never auto-expands.
   const handleToggleExpand = useCallback(
     (id: number) => {
       selectAndScroll(id);
@@ -139,25 +146,128 @@ export function HomeScreen() {
     [hidden],
   );
 
+  const feedColumn = (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center gap-2 border-b px-3 py-2">
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
+          value={view}
+          onValueChange={(next) => next && setView(next as TriageView)}
+        >
+          <ToggleGroupItem value="all" className="h-8 text-xs">
+            All
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="shortlist"
+            className="h-8 gap-1 text-xs"
+            disabled={shortlistCount === 0}
+          >
+            <RiStarFill className="size-3.5 text-amber-500" />
+            {shortlistCount}
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="hidden"
+            className="h-8 text-xs"
+            disabled={hiddenCount === 0}
+          >
+            Hidden {hiddenCount > 0 ? hiddenCount : ""}
+          </ToggleGroupItem>
+        </ToggleGroup>
+        {view === "hidden" && hiddenCount > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto h-8 text-xs"
+            onClick={() => triageStore.clearHidden()}
+          >
+            Restore all
+          </Button>
+        )}
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+        {clusters.isLoading ? (
+          Array.from({ length: 6 }, (_, index) => (
+            <Skeleton key={`skeleton-${index}`} className="h-40 w-full" />
+          ))
+        ) : clusters.isError ? (
+          <p className="p-4 text-sm text-destructive">
+            Couldn't load listings. Is the worker pipeline run and the DB up?
+          </p>
+        ) : visible.length === 0 ? (
+          <EmptyState view={view} hasCards={cards.length > 0} />
+        ) : (
+          visible.map((card) => (
+            <Card
+              key={card.clusterId}
+              card={card}
+              anchorLabel={anchor?.label ?? null}
+              isSelected={card.clusterId === selectedId}
+              isShortlisted={shortlisted.has(card.clusterId)}
+              isHidden={hidden.has(card.clusterId)}
+              isExpanded={card.clusterId === expandedId}
+              onSelect={selectAndScroll}
+              onToggleExpand={handleToggleExpand}
+              onToggleShortlist={(id) => triageStore.toggleShortlist(id)}
+              onToggleHide={handleToggleHide}
+              onHover={setHoveredId}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  const mapPanel = (
+    <div className="relative size-full">
+      <ListingMap
+        clusters={visible}
+        selectedId={selectedId}
+        hoveredId={hoveredId}
+        shortlisted={shortlisted}
+        onSelect={selectAndScroll}
+        anchor={anchor}
+      />
+      <div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 rounded-md border bg-background/90 p-2 text-xs shadow-sm backdrop-blur">
+        {LEGEND.map((item) => (
+          <span key={item.tone} className="flex items-center gap-1.5">
+            <span
+              className={cn("size-2.5 rounded-full", TONE_DOT[item.tone])}
+            />
+            {item.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center gap-3 border-b px-4 py-2.5">
         <div className="flex items-center gap-2">
           <RiHome4Line className="size-5 text-primary" />
-          <span className="font-semibold">home-hunter</span>
+          <span className="font-mono font-semibold tracking-tight">
+            home-hunter
+          </span>
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-          <span>
+        <div className="flex flex-wrap items-center gap-1.5 text-sm">
+          <span className="font-mono text-muted-foreground">
             {clusters.isLoading ? "loading…" : `${visible.length} listings`}
           </span>
           {deals > 0 && (
-            <span className="text-green-700 dark:text-green-400">
+            <span className="rounded-full bg-green-600/10 px-2 py-0.5 font-mono text-xs font-medium text-green-700 dark:text-green-400">
               {deals} deals
             </span>
           )}
-          {fresh > 0 && <span>{fresh} new</span>}
+          {fresh > 0 && (
+            <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-xs font-medium text-muted-foreground">
+              {fresh} new
+            </span>
+          )}
           {cautions > 0 && (
-            <span className="text-red-700 dark:text-red-400">
+            <span className="rounded-full bg-red-600/10 px-2 py-0.5 font-mono text-xs font-medium text-red-700 dark:text-red-400">
               {cautions} caution
             </span>
           )}
@@ -189,100 +299,34 @@ export function HomeScreen() {
 
       <FilterBar config={config.data} />
 
-      <div className="flex min-h-0 flex-1 flex-col-reverse lg:flex-row">
-        <div className="flex w-full flex-col lg:w-[480px]">
-          <div className="flex items-center gap-2 border-b px-3 py-2">
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              size="sm"
-              value={view}
-              onValueChange={(next) => next && setView(next as TriageView)}
-            >
-              <ToggleGroupItem value="all" className="h-8 text-xs">
-                All
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="shortlist"
-                className="h-8 gap-1 text-xs"
-                disabled={shortlistCount === 0}
-              >
-                <RiStarFill className="size-3.5 text-amber-500" />
-                {shortlistCount}
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="hidden"
-                className="h-8 text-xs"
-                disabled={hiddenCount === 0}
-              >
-                Hidden {hiddenCount > 0 ? hiddenCount : ""}
-              </ToggleGroupItem>
-            </ToggleGroup>
-            {view === "hidden" && hiddenCount > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="ml-auto h-8 text-xs"
-                onClick={() => triageStore.clearHidden()}
-              >
-                Restore all
-              </Button>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2 overflow-y-auto p-3">
-            {clusters.isLoading ? (
-              Array.from({ length: 6 }, (_, index) => (
-                <Skeleton key={`skeleton-${index}`} className="h-40 w-full" />
-              ))
-            ) : clusters.isError ? (
-              <p className="p-4 text-sm text-destructive">
-                Couldn't load listings. Is the worker pipeline run and the DB
-                up?
-              </p>
-            ) : visible.length === 0 ? (
-              <EmptyState view={view} hasCards={cards.length > 0} />
-            ) : (
-              visible.map((card) => (
-                <Card
-                  key={card.clusterId}
-                  card={card}
-                  anchorLabel={anchor?.label ?? null}
-                  isSelected={card.clusterId === selectedId}
-                  isShortlisted={shortlisted.has(card.clusterId)}
-                  isHidden={hidden.has(card.clusterId)}
-                  isExpanded={card.clusterId === expandedId}
-                  onSelect={handleToggleExpand}
-                  onToggleShortlist={(id) => triageStore.toggleShortlist(id)}
-                  onToggleHide={handleToggleHide}
-                  onHover={setHoveredId}
-                />
-              ))
-            )}
-          </div>
+      {isDesktop ? (
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="min-h-0 flex-1"
+        >
+          <ResizablePanel
+            defaultSize="37%"
+            minSize="24%"
+            maxSize="62%"
+            className="min-h-0 overflow-hidden"
+          >
+            {feedColumn}
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel
+            defaultSize="63%"
+            minSize="30%"
+            className="min-h-0 overflow-hidden"
+          >
+            {mapPanel}
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="h-[38vh] shrink-0">{mapPanel}</div>
+          <div className="min-h-0 flex-1">{feedColumn}</div>
         </div>
-
-        <div className="relative h-[38vh] w-full lg:h-auto lg:flex-1">
-          <ListingMap
-            clusters={visible}
-            selectedId={selectedId}
-            hoveredId={hoveredId}
-            shortlisted={shortlisted}
-            onSelect={selectAndScroll}
-            anchor={anchor}
-          />
-          <div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 rounded-md border bg-background/90 p-2 text-xs shadow-sm backdrop-blur">
-            {LEGEND.map((item) => (
-              <span key={item.tone} className="flex items-center gap-1.5">
-                <span
-                  className={cn("size-2.5 rounded-full", TONE_DOT[item.tone])}
-                />
-                {item.label}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
+      )}
 
       <ShortcutsDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </div>

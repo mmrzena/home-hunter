@@ -74,7 +74,12 @@ export function ListingMap({
     }
     map.addControl(new maplibregl.NavigationControl(), "top-right");
     mapRef.current = map;
+    // The map lives in a resizable panel; MapLibre only tracks window resizes,
+    // so observe the container and resize the canvas when the divider moves.
+    const observer = new ResizeObserver(() => map.resize());
+    observer.observe(containerRef.current);
     return () => {
+      observer.disconnect();
       map.remove();
       mapRef.current = null;
     };

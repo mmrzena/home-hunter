@@ -1,10 +1,11 @@
-import { percentileTone, TONE_DOT } from "@/lib/listing-status";
+import { percentileTone, TONE_DOT, TONE_TEXT } from "@/lib/listing-status";
 import { cn } from "@/lib/utils";
 
 /**
- * A price-percentile bar: green (cheap) → grey → amber (expensive), with a
- * marker at the listing's within-bucket percentile. The marker's `left` is the
- * one genuinely dynamic value, so it stays inline.
+ * The card's signature: where this listing's CZK/m² sits among comparable
+ * houses in its area. Green (cheap) → grey → amber (pricey), with a marker at
+ * the within-bucket percentile. The reading is tone-colored so a deal's number
+ * looks like a deal; `left` is the one genuinely dynamic value, so it stays inline.
  */
 export function PercentileMeter({
   percentile,
@@ -17,25 +18,29 @@ export function PercentileMeter({
 }) {
   if (percentile == null) {
     return (
-      <p className="text-xs text-muted-foreground">
-        No price benchmark for this listing
-      </p>
+      <p className="text-xs text-muted-foreground">No price benchmark yet</p>
     );
   }
   const pct = Math.round(percentile);
   const tone = percentileTone(percentile);
   return (
     <div className="space-y-1">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">CZK/m² vs area</span>
-        <span className="font-medium">
-          {pct}th pct{confidence === "low" && " · low conf"}
+      <div className="flex items-baseline justify-between text-xs">
+        <span className="text-muted-foreground">Price vs area</span>
+        <span className={cn("font-mono font-semibold", TONE_TEXT[tone])}>
+          {pct}
+          <span className="text-[10px] font-normal">th pct</span>
+          {confidence === "low" && (
+            <span className="text-muted-foreground"> · est.</span>
+          )}
         </span>
       </div>
-      <div className="relative h-1.5 w-full rounded-full bg-gradient-to-r from-green-500/40 via-blueGrey-300/50 to-amber-500/50">
+      <div className="relative h-2 w-full rounded-full bg-gradient-to-r from-green-500/45 via-blueGrey-300/40 to-amber-500/55">
+        {/* Median reference — read the marker against the market midpoint. */}
+        <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-foreground/25" />
         <div
           className={cn(
-            "absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-background",
+            "absolute top-1/2 h-3.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-background",
             TONE_DOT[tone],
           )}
           style={{ left: `${pct}%` }}

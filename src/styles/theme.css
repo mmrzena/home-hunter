@@ -290,10 +290,14 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  /* Font family — Open Sans loaded by next/font/google in app/layout.tsx */
+  /* Fonts — loaded by next/font/google in app/layout.tsx. Open Sans for prose,
+     IBM Plex Mono for every numeric readout (price, percentile, m², distance). */
   --font-sans:
     var(--font-open-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    var(--font-plex-mono), ui-monospace, "SFMono-Regular", "Menlo", "Consolas",
+    monospace;
 
   /* Material-style color scales — ported from frontend-platform/theme/frontend/colors.ts */
 
@@ -516,5 +520,12 @@
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+  }
+  /* Tailwind v4 makes <button> use the default cursor; restore the pointer for
+     anything actually clickable (buttons, role=button, links without href). */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  a:not([href]) {
+    cursor: pointer;
   }
 }

@@ -30,6 +30,14 @@ export const TONE_DOT: Record<Tone, string> = {
   fair: "bg-blueGrey-400",
 };
 
+/** Tone → text color, for numbers/labels that should carry the verdict's hue. */
+export const TONE_TEXT: Record<Tone, string> = {
+  deal: "text-green-700 dark:text-green-400",
+  overpriced: "text-amber-600 dark:text-amber-400",
+  caution: "text-red-700 dark:text-red-400",
+  fair: "text-muted-foreground",
+};
+
 /** Hex equivalents for non-CSS contexts (MapLibre marker DOM). */
 export const TONE_HEX: Record<Tone, string> = {
   deal: "#16a34a",
