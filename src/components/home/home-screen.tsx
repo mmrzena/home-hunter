@@ -172,7 +172,7 @@ export function HomeScreen() {
             className="h-8 text-xs"
             disabled={hiddenCount === 0}
           >
-            Hidden {hiddenCount > 0 ? hiddenCount : ""}
+            Seen {hiddenCount > 0 ? hiddenCount : ""}
           </ToggleGroupItem>
         </ToggleGroup>
         {view === "hidden" && hiddenCount > 0 && (

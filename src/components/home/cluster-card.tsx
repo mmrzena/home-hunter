@@ -266,8 +266,8 @@ export function ClusterCard({
         </button>
         <button
           type="button"
-          aria-label={isHidden ? "Restore listing" : "Hide listing"}
-          title={isHidden ? "Restore" : "Hide (x)"}
+          aria-label={isHidden ? "Restore listing" : "Mark as seen"}
+          title={isHidden ? "Restore" : "Mark seen (x)"}
           onClick={() => onToggleHide(card.clusterId)}
           className={cn(
             "flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",

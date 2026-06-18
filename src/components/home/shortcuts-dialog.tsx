@@ -14,7 +14,7 @@ const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
   { keys: ["k"], label: "Previous listing" },
   { keys: ["o"], label: "Open details" },
   { keys: ["s"], label: "Shortlist / unshortlist" },
-  { keys: ["x"], label: "Hide listing" },
+  { keys: ["x"], label: "Mark as seen" },
   { keys: ["r"], label: "Refresh feed" },
   { keys: ["Esc"], label: "Close / clear selection" },
   { keys: ["?"], label: "Toggle this help" },
