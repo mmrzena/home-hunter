@@ -16,7 +16,13 @@ percentile, scam signals, and distance. See `README.md` for the full picture.
   `worker/pipeline/`, runnable individually via `worker/cli.ts`
   (`npm run ingest|hash|bucket|dedupe|score|pipeline`) or daily via
   `worker/index.ts` (node-cron). Sources implement `worker/sources/types.ts`
-  (`Source`); Sreality is live, Bezrealitky is a flagged stub.
+  (`Source`). Three sources, all on by default (toggle the secondaries with
+  `ENABLE_BEZREALITKY` / `ENABLE_CESKEREALITY` = `false`): Sreality, Bezrealitky
+  (GraphQL `listAdverts`, region ids `R435514`/`R442397`; resolves everything at
+  list time so its `enrich` is a no-op), and České reality (no API — scrapes the
+  `stredo.ceskereality.cz` search for ids/URLs/price, then parses each detail
+  page's `individualProduct` JSON-LD + map coords in `enrich`; one subdomain
+  covers Praha + Středočeský).
 - **app (`app/`, `src/`)** — Next.js, **read-only** over Postgres via Drizzle.
   Route handlers in `app/api/` (`clusters`, `config`); the one screen is
   `app/page.tsx` → `src/components/home/` (`home-screen`, `cluster-card`,

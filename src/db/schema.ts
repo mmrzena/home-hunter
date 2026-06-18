@@ -17,7 +17,7 @@ import {
  */
 export type Reason = { code: string; label: string; weight: number };
 
-export type SourceName = "sreality" | "bezrealitky";
+export type SourceName = "sreality" | "bezrealitky" | "ceskereality";
 export type BucketSource = "polygon" | "locality";
 export type DealVerdict = "deal" | "fair" | "overpriced";
 

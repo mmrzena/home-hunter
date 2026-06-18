@@ -14,8 +14,11 @@ Postgres 16 + PostGIS.
 1. **Ingest** — pages the Sreality public JSON API for family houses + villas
    for sale (`category_main_cb=2`, `category_type_cb=1`) across Prague +
    Středočeský kraj. Polite: a real User-Agent, a request delay, backoff, and
-   detail fetched only for new/changed listings. Bezrealitky is stubbed behind a
-   flag (`ENABLE_BEZREALITKY`).
+   detail fetched only for new/changed listings. Two more sources run by default:
+   Bezrealitky (the no-commission portal, via its GraphQL API) and České reality
+   (scraped); disable either with `ENABLE_BEZREALITKY=false` /
+   `ENABLE_CESKEREALITY=false`. The same house listed on several portals is
+   deduped into one card.
 2. **Normalize** — maps each source into one schema (price, areas, disposition,
    GPS, seller, photos, labels …).
 3. **Hash** — computes a 64-bit perceptual hash (dHash) per image **in memory**;
@@ -116,7 +119,8 @@ are labeled "low confidence".
 | `DATABASE_URL` | local compose | Postgres + PostGIS connection (override for Neon) |
 | `DB_POOL_MAX` | `10` | connection-pool size (set `1` on Vercel serverless) |
 | `ANCHOR_LAT` / `ANCHOR_LNG` / `ANCHOR_LABEL` | — | optional anchor for commute distance + bearing |
-| `ENABLE_BEZREALITKY` | `false` | turn on the (stubbed) second source |
+| `ENABLE_BEZREALITKY` | `true` | Bezrealitky source (GraphQL); `false` to disable |
+| `ENABLE_CESKEREALITY` | `true` | České reality source (scraped); `false` to disable |
 | `INGEST_MAX_PAGES` | `40` | page cap per region per run |
 | `REQUEST_DELAY_MS` | `1200` | inter-request delay to the source API |
 | `MAX_IMAGES_PER_LISTING` | `8` | images hashed per listing |

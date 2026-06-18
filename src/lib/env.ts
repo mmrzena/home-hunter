@@ -26,9 +26,15 @@ const envSchema = z.object({
   ANCHOR_LABEL: z.string().optional(),
 
   // Ingest tuning.
+  // Secondary sources are live + verified, so they run by default; set the flag
+  // to "false" to drop one (e.g. to ingest Sreality only).
   ENABLE_BEZREALITKY: z
     .enum(["true", "false"])
-    .default("false")
+    .default("true")
+    .transform((value) => value === "true"),
+  ENABLE_CESKEREALITY: z
+    .enum(["true", "false"])
+    .default("true")
     .transform((value) => value === "true"),
   INGEST_MAX_PAGES: z.coerce.number().int().positive().default(40),
   REQUEST_DELAY_MS: z.coerce.number().int().nonnegative().default(1200),

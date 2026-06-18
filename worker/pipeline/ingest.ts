@@ -6,6 +6,7 @@ import { env } from "@/lib/env";
 
 import { inRegionBbox } from "../lib/regions";
 import { createBezrealitkySource } from "../sources/bezrealitky";
+import { createCeskeRealitySource } from "../sources/ceskereality";
 import { createSrealitySource } from "../sources/sreality";
 import type { RawListing, Source } from "../sources/types";
 
@@ -31,6 +32,13 @@ function insertValues(raw: RawListing) {
     lng: raw.lng,
     localityText: raw.localityText,
     url: raw.url,
+    // Seller + description are authoritative from enrich for sources that have a
+    // detail step (Sreality), but some sources (Bezrealitky) resolve everything
+    // at list time with a no-op enrich — so persist whatever the list pass gives.
+    sellerType: raw.sellerType,
+    sellerName: raw.sellerName,
+    hasIco: raw.hasIco,
+    description: raw.description,
     photos: raw.photos ?? [],
     labels: raw.labels ?? [],
   };
@@ -158,6 +166,7 @@ export async function ingest(): Promise<IngestSummary> {
 
   const sources: Source[] = [createSrealitySource()];
   if (env.ENABLE_BEZREALITKY) sources.push(createBezrealitkySource());
+  if (env.ENABLE_CESKEREALITY) sources.push(createCeskeRealitySource());
 
   for (const source of sources) {
     console.log(`ingest: ${source.name}…`);
