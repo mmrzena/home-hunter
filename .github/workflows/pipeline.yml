@@ -18,10 +18,15 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Three sources × thousands of listings + per-row Neon round-trips run well
+    # past an hour; give it room (the job exits as soon as the pipeline is done).
+    timeout-minutes: 180
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      # Optional: tune ingest here (defaults are fine).
+      # A touch faster than the 1200 ms local default — still polite for a
+      # once-nightly job, and trims a big chunk off the paced ingest.
+      REQUEST_DELAY_MS: "700"
+      # Optional: cap pages per region per source if a run still runs long.
       # INGEST_MAX_PAGES: "40"
     steps:
       - uses: actions/checkout@v4
