@@ -30,12 +30,7 @@ import {
   formatPrice,
   formatPriceCompact,
 } from "@/lib/format";
-import {
-  markerTone,
-  statusBadge,
-  TONE_BADGE,
-  TONE_DOT,
-} from "@/lib/listing-status";
+import { statusBadge, TONE_BADGE } from "@/lib/listing-status";
 import type { ClusterCard as Card } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -70,9 +65,6 @@ export function ClusterCard({
   onHover: (id: number | null) => void;
 }) {
   const badge = statusBadge(card);
-  // Verdict tone for the left spine — shown only when it carries a signal
-  // (deal / overpriced / caution), so ordinary listings stay quiet.
-  const tone = markerTone(card);
   const hasSpread =
     card.minPrice != null &&
     card.maxPrice != null &&
@@ -91,12 +83,6 @@ export function ClusterCard({
         isHidden && "opacity-60",
       )}
     >
-      {tone !== "fair" && (
-        <span
-          aria-hidden
-          className={cn("absolute inset-y-0 left-0 w-1", TONE_DOT[tone])}
-        />
-      )}
       <div className="flex items-stretch">
         <button
           type="button"

@@ -12,10 +12,15 @@ export type ClusterFilters = {
   verdict?: "deal" | "fair" | "overpriced";
   goodDealsOnly?: boolean;
   freshOnly?: boolean;
+  nearTrain?: boolean;
+  maxPragueKm?: number;
   kind?: string;
   sort?: SortKey;
   limit?: number;
 };
+
+// Within a comfortable walk of a station — matches the card's "near train" tint.
+const NEAR_TRAIN_KM = 1.5;
 
 // biome-ignore lint/suspicious/noExplicitAny: postgres-js fragment type
 type Fragment = any;
@@ -156,5 +161,36 @@ export async function getClusters(
     LIMIT ${filters.limit ?? 500}
   `;
 
-  return rows.map(toCard);
+  let cards = rows.map(toCard);
+
+  // Proximity to Prague + the nearest station is computed in JS (bundled OSM
+  // data), so its filter/sort live here rather than in SQL. They operate on the
+  // already-filtered working set — stack a price/area/deal filter to narrow it.
+  if (filters.nearTrain) {
+    cards = cards.filter(
+      (card) =>
+        card.nearestStationKm != null && card.nearestStationKm <= NEAR_TRAIN_KM,
+    );
+  }
+  const maxPragueKm = filters.maxPragueKm;
+  if (maxPragueKm != null) {
+    cards = cards.filter(
+      (card) => card.pragueKm != null && card.pragueKm <= maxPragueKm,
+    );
+  }
+  if (filters.sort === "prague") {
+    cards.sort(
+      (a, b) =>
+        (a.pragueKm ?? Number.POSITIVE_INFINITY) -
+        (b.pragueKm ?? Number.POSITIVE_INFINITY),
+    );
+  } else if (filters.sort === "train") {
+    cards.sort(
+      (a, b) =>
+        (a.nearestStationKm ?? Number.POSITIVE_INFINITY) -
+        (b.nearestStationKm ?? Number.POSITIVE_INFINITY),
+    );
+  }
+
+  return cards;
 }

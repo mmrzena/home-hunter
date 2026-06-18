@@ -79,4 +79,6 @@ export type SortKey =
   | "priceAsc"
   | "priceDesc"
   | "bestDeal"
-  | "distance";
+  | "distance"
+  | "prague"
+  | "train";

@@ -30,6 +30,8 @@ const SORTS = [
   { value: "bestDeal", label: "Best deal" },
   { value: "priceAsc", label: "Cheapest" },
   { value: "priceDesc", label: "Priciest" },
+  { value: "prague", label: "Closest to Prague" },
+  { value: "train", label: "Closest to train" },
   { value: "distance", label: "Nearest" },
 ];
 
@@ -111,6 +113,12 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
         onCommit={(value) => setParam("minLand", value)}
         className="w-[110px]"
       />
+      <CommitInput
+        placeholder="Max km to Prague"
+        defaultValue={params.get("maxPrague") ?? ""}
+        onCommit={(value) => setParam("maxPrague", value)}
+        className="w-[140px]"
+      />
 
       <Popover>
         <PopoverTrigger asChild>
@@ -154,6 +162,15 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
           }
         />
         Good deals
+      </Label>
+      <Label className="flex items-center gap-1.5 text-sm font-normal">
+        <Switch
+          checked={params.get("nearTrain") === "1"}
+          onCheckedChange={(checked) =>
+            setParam("nearTrain", checked ? "1" : null)
+          }
+        />
+        Near train
       </Label>
       <Label className="flex items-center gap-1.5 text-sm font-normal">
         <Switch

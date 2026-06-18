@@ -10,6 +10,8 @@ const SORTS = new Set([
   "priceDesc",
   "bestDeal",
   "distance",
+  "prague",
+  "train",
 ]);
 
 export async function GET(request: NextRequest) {
@@ -33,6 +35,8 @@ export async function GET(request: NextRequest) {
         : undefined,
     goodDealsOnly: params.get("goodDeals") === "1",
     freshOnly: params.get("fresh") === "1",
+    nearTrain: params.get("nearTrain") === "1",
+    maxPragueKm: number("maxPrague"),
     kind: params.get("kind") ?? undefined,
     sort: sort && SORTS.has(sort) ? (sort as SortKey) : "newest",
   };
