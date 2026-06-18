@@ -1,21 +1,30 @@
 "use client";
 
-import { RiHome4Line, RiRefreshLine } from "@remixicon/react";
+import {
+  RiHome4Line,
+  RiKeyboardLine,
+  RiRefreshLine,
+  RiStarFill,
+} from "@remixicon/react";
 import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { TONE_DOT, type Tone } from "@/lib/listing-status";
+import { type TriageView, triageStore, useTriage } from "@/lib/triage-store";
 import type { AppConfig, ClusterCard } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 import { ClusterCard as Card } from "./cluster-card";
 import { ClusterDetailSheet } from "./cluster-detail-sheet";
 import { FilterBar } from "./filter-bar";
+import { ShortcutsDialog } from "./shortcuts-dialog";
+import { useKeyboardNav } from "./use-keyboard-nav";
 
 const ListingMap = dynamic(
   () => import("./listing-map").then((module) => module.ListingMap),
@@ -43,6 +52,11 @@ export function HomeScreen() {
   const query = searchParams.toString();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const [view, setView] = useState<TriageView>("all");
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  const { shortlisted, hidden } = useTriage();
 
   const selectAndScroll = useCallback((id: number) => {
     setSelectedId(id);
@@ -77,13 +91,55 @@ export function HomeScreen() {
 
   const anchor = config.data?.anchor ?? null;
   const cards = clusters.data ?? [];
+
+  const shortlistCount = cards.filter((card) =>
+    shortlisted.has(card.clusterId),
+  ).length;
+  const hiddenCount = cards.filter((card) => hidden.has(card.clusterId)).length;
+
+  // Memoized so its identity is stable across re-renders — the map keys marker
+  // rebuilds and pans off this array, and a fresh array each render made the
+  // map re-fit + re-fly on every click (the "jumps two or three times" bug).
+  const visible = useMemo(
+    () =>
+      cards.filter((card) => {
+        if (view === "shortlist") return shortlisted.has(card.clusterId);
+        if (view === "hidden") return hidden.has(card.clusterId);
+        return !hidden.has(card.clusterId);
+      }),
+    [cards, view, shortlisted, hidden],
+  );
+
   const detailCard = cards.find((card) => card.clusterId === detailId) ?? null;
 
-  const deals = cards.filter((card) => card.isGoodDeal).length;
-  const cautions = cards.filter(
+  const deals = visible.filter((card) => card.isGoodDeal).length;
+  const cautions = visible.filter(
     (card) => card.scamScore != null && card.scamScore >= 30,
   ).length;
-  const fresh = cards.filter((card) => card.isNew).length;
+  const fresh = visible.filter((card) => card.isNew).length;
+
+  useKeyboardNav({
+    ids: visible.map((card) => card.clusterId),
+    selectedId,
+    onSelect: selectAndScroll,
+    onOpenDetail: handleOpenDetail,
+    onShortlist: (id) => triageStore.toggleShortlist(id),
+    onHide: (id) => triageStore.hide(id),
+    onRefresh: () => clusters.refetch(),
+    onClear: () => {
+      if (detailId != null) setDetailId(null);
+      else setSelectedId(null);
+    },
+    onToggleHelp: () => setHelpOpen((open) => !open),
+  });
+
+  const handleToggleHide = useCallback(
+    (id: number) => {
+      if (hidden.has(id)) triageStore.unhide(id);
+      else triageStore.hide(id);
+    },
+    [hidden],
+  );
 
   return (
     <div className="flex h-screen flex-col">
@@ -94,7 +150,7 @@ export function HomeScreen() {
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
           <span>
-            {clusters.isLoading ? "loading…" : `${cards.length} listings`}
+            {clusters.isLoading ? "loading…" : `${visible.length} listings`}
           </span>
           {deals > 0 && (
             <span className="text-green-700 dark:text-green-400">
@@ -113,8 +169,17 @@ export function HomeScreen() {
             variant="ghost"
             size="icon"
             className="size-8"
+            onClick={() => setHelpOpen(true)}
+            title="Keyboard shortcuts (?)"
+          >
+            <RiKeyboardLine className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
             onClick={() => clusters.refetch()}
-            title="Refresh"
+            title="Refresh (r)"
           >
             <RiRefreshLine
               className={cn("size-4", clusters.isFetching && "animate-spin")}
@@ -127,40 +192,83 @@ export function HomeScreen() {
       <FilterBar config={config.data} />
 
       <div className="flex min-h-0 flex-1 flex-col-reverse lg:flex-row">
-        <div className="flex w-full flex-col gap-2 overflow-y-auto p-3 lg:w-[480px]">
-          {clusters.isLoading ? (
-            Array.from({ length: 6 }, (_, index) => (
-              <Skeleton key={`skeleton-${index}`} className="h-40 w-full" />
-            ))
-          ) : clusters.isError ? (
-            <p className="p-4 text-sm text-destructive">
-              Couldn't load listings. Is the worker pipeline run and the DB up?
-            </p>
-          ) : cards.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
-              <RiHome4Line className="size-6" />
-              <p className="text-sm">
-                No listings match. Loosen the filters, or run{" "}
-                <code className="rounded bg-muted px-1">npm run pipeline</code>.
+        <div className="flex w-full flex-col lg:w-[480px]">
+          <div className="flex items-center gap-2 border-b px-3 py-2">
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              value={view}
+              onValueChange={(next) => next && setView(next as TriageView)}
+            >
+              <ToggleGroupItem value="all" className="h-8 text-xs">
+                All
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="shortlist"
+                className="h-8 gap-1 text-xs"
+                disabled={shortlistCount === 0}
+              >
+                <RiStarFill className="size-3.5 text-amber-500" />
+                {shortlistCount}
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="hidden"
+                className="h-8 text-xs"
+                disabled={hiddenCount === 0}
+              >
+                Hidden {hiddenCount > 0 ? hiddenCount : ""}
+              </ToggleGroupItem>
+            </ToggleGroup>
+            {view === "hidden" && hiddenCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-auto h-8 text-xs"
+                onClick={() => triageStore.clearHidden()}
+              >
+                Restore all
+              </Button>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2 overflow-y-auto p-3">
+            {clusters.isLoading ? (
+              Array.from({ length: 6 }, (_, index) => (
+                <Skeleton key={`skeleton-${index}`} className="h-40 w-full" />
+              ))
+            ) : clusters.isError ? (
+              <p className="p-4 text-sm text-destructive">
+                Couldn't load listings. Is the worker pipeline run and the DB
+                up?
               </p>
-            </div>
-          ) : (
-            cards.map((card) => (
-              <Card
-                key={card.clusterId}
-                card={card}
-                anchorLabel={anchor?.label ?? null}
-                isSelected={card.clusterId === selectedId}
-                onSelect={handleOpenDetail}
-              />
-            ))
-          )}
+            ) : visible.length === 0 ? (
+              <EmptyState view={view} hasCards={cards.length > 0} />
+            ) : (
+              visible.map((card) => (
+                <Card
+                  key={card.clusterId}
+                  card={card}
+                  anchorLabel={anchor?.label ?? null}
+                  isSelected={card.clusterId === selectedId}
+                  isShortlisted={shortlisted.has(card.clusterId)}
+                  isHidden={hidden.has(card.clusterId)}
+                  onSelect={handleOpenDetail}
+                  onToggleShortlist={(id) => triageStore.toggleShortlist(id)}
+                  onToggleHide={handleToggleHide}
+                  onHover={setHoveredId}
+                />
+              ))
+            )}
+          </div>
         </div>
 
         <div className="relative h-[38vh] w-full lg:h-auto lg:flex-1">
           <ListingMap
-            clusters={cards}
+            clusters={visible}
             selectedId={selectedId}
+            hoveredId={hoveredId}
+            shortlisted={shortlisted}
             onSelect={selectAndScroll}
             anchor={anchor}
           />
@@ -185,6 +293,42 @@ export function HomeScreen() {
         }}
         anchorLabel={anchor?.label ?? null}
       />
+
+      <ShortcutsDialog open={helpOpen} onOpenChange={setHelpOpen} />
+    </div>
+  );
+}
+
+function EmptyState({
+  view,
+  hasCards,
+}: {
+  view: TriageView;
+  hasCards: boolean;
+}) {
+  if (view === "shortlist") {
+    return (
+      <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
+        <RiStarFill className="size-6 text-amber-500" />
+        <p className="text-sm">
+          No shortlisted listings yet. Hit <kbd>s</kbd> on a listing — or the
+          star — to keep it here.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
+      <RiHome4Line className="size-6" />
+      <p className="text-sm">
+        {hasCards
+          ? "Everything here is hidden. Switch to All to bring listings back."
+          : "No listings match. Loosen the filters, or run "}
+        {!hasCards && (
+          <code className="rounded bg-muted px-1">npm run pipeline</code>
+        )}
+        {!hasCards && "."}
+      </p>
     </div>
   );
 }

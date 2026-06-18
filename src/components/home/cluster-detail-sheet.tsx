@@ -4,6 +4,8 @@ import {
   RiAlertLine,
   RiArrowRightUpLine,
   RiCheckboxCircleLine,
+  RiStarFill,
+  RiStarLine,
 } from "@remixicon/react";
 
 import { Badge } from "@/components/ui/badge";
@@ -31,7 +33,9 @@ import {
   formatPrice,
 } from "@/lib/format";
 import { statusBadge, TONE_BADGE } from "@/lib/listing-status";
+import { triageStore, useTriage } from "@/lib/triage-store";
 import type { ClusterCard } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 import { PercentileMeter } from "./percentile-meter";
 
@@ -56,6 +60,8 @@ export function ClusterDetailSheet({
   anchorLabel: string | null;
 }) {
   const badge = card ? statusBadge(card) : null;
+  const { shortlisted } = useTriage();
+  const isShortlisted = card ? shortlisted.has(card.clusterId) : false;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -76,9 +82,27 @@ export function ClusterDetailSheet({
                   </Badge>
                 )}
               </div>
-              <SheetTitle className="text-2xl">
-                {formatPrice(card.price)}
-              </SheetTitle>
+              <div className="flex items-center justify-between gap-2">
+                <SheetTitle className="text-2xl">
+                  {formatPrice(card.price)}
+                </SheetTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "gap-1.5",
+                    isShortlisted && "border-amber-400/70 text-amber-600",
+                  )}
+                  onClick={() => triageStore.toggleShortlist(card.clusterId)}
+                >
+                  {isShortlisted ? (
+                    <RiStarFill className="size-4 text-amber-500" />
+                  ) : (
+                    <RiStarLine className="size-4" />
+                  )}
+                  {isShortlisted ? "Shortlisted" : "Shortlist"}
+                </Button>
+              </div>
               <SheetDescription>
                 {formatKind(card.propertyKind)} ·{" "}
                 {card.cadastralName ?? card.localityText ?? "—"}
