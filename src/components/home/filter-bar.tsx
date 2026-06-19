@@ -140,7 +140,7 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
     !hidden.has(key) || (HIDEABLE.find((f) => f.key === key)?.active ?? false);
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b bg-background/80 px-4 py-2.5 backdrop-blur">
+    <div className="flex items-center gap-2 overflow-x-auto border-b bg-background/80 px-4 py-2.5 backdrop-blur *:shrink-0 lg:flex-wrap lg:overflow-visible">
       <Popover>
         <PopoverTrigger asChild>
           <Button

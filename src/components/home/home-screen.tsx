@@ -3,6 +3,8 @@
 import {
   RiHome4Line,
   RiKeyboardLine,
+  RiListUnordered,
+  RiMap2Line,
   RiRefreshLine,
   RiStarFill,
 } from "@remixicon/react";
@@ -62,6 +64,8 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [view, setView] = useState<TriageView>("all");
   const [helpOpen, setHelpOpen] = useState(false);
+  // Mobile shows one pane at a time (toggled below); desktop shows both split.
+  const [mobileView, setMobileView] = useState<"list" | "map">("list");
   const isDesktop = useIsDesktop();
 
   const { shortlisted, hidden } = useTriage();
@@ -189,7 +193,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3 max-lg:pb-20">
         {clusters.isLoading ? (
           Array.from({ length: 6 }, (_, index) => (
             <Skeleton key={`skeleton-${index}`} className="h-40 w-full" />
@@ -248,7 +252,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   return (
     <div className="flex h-screen flex-col">
       {authEnabled && <TriageSync />}
-      <header className="flex items-center gap-3 border-b px-4 py-2.5">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 py-2">
         <div className="flex items-center gap-2">
           <RiHome4Line className="size-5 text-primary" />
           <span className="font-mono font-semibold tracking-tight">
@@ -279,7 +283,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
           <Button
             variant="ghost"
             size="icon"
-            className="size-8"
+            className="hidden size-8 lg:inline-flex"
             onClick={() => setHelpOpen(true)}
             title="Keyboard shortcuts (?)"
           >
@@ -326,9 +330,48 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
           </ResizablePanel>
         </ResizablePanelGroup>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="h-[38vh] shrink-0">{mapPanel}</div>
-          <div className="min-h-0 flex-1">{feedColumn}</div>
+        <div className="relative min-h-0 flex-1">
+          {/* Both panes stay mounted at full size — `invisible` (not `hidden`)
+              keeps the map's container sized so it never re-renders at 0×0. */}
+          <div
+            className={cn(
+              "absolute inset-0",
+              mobileView === "map" && "invisible",
+            )}
+          >
+            {feedColumn}
+          </div>
+          <div
+            className={cn(
+              "absolute inset-0",
+              mobileView === "list" && "invisible",
+            )}
+          >
+            {mapPanel}
+          </div>
+
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            value={mobileView}
+            onValueChange={(next) =>
+              next && setMobileView(next as "list" | "map")
+            }
+            className="-translate-x-1/2 absolute bottom-4 left-1/2 z-10 rounded-full border bg-background/95 shadow-lg backdrop-blur"
+          >
+            <ToggleGroupItem
+              value="list"
+              className="h-9 gap-1.5 rounded-full px-4"
+            >
+              <RiListUnordered className="size-4" /> List
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="map"
+              className="h-9 gap-1.5 rounded-full px-4"
+            >
+              <RiMap2Line className="size-4" /> Map
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
       )}
 

@@ -284,7 +284,7 @@ export function ClusterCard({
             "flex size-7 items-center justify-center rounded-md transition-colors",
             isShortlisted
               ? "text-amber-500 hover:bg-amber-500/10"
-              : "text-muted-foreground opacity-0 hover:bg-muted hover:text-amber-500 focus-visible:opacity-100 group-hover/card:opacity-100",
+              : "text-muted-foreground hover:bg-muted hover:text-amber-500 lg:opacity-0 lg:focus-visible:opacity-100 lg:group-hover/card:opacity-100",
           )}
         >
           {isShortlisted ? (
@@ -301,7 +301,7 @@ export function ClusterCard({
           className={cn(
             "flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
             !isHidden &&
-              "opacity-0 focus-visible:opacity-100 group-hover/card:opacity-100",
+              "lg:opacity-0 lg:focus-visible:opacity-100 lg:group-hover/card:opacity-100",
           )}
         >
           {isHidden ? (
