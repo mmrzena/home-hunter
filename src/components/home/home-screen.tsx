@@ -25,9 +25,11 @@ import { type TriageView, triageStore, useTriage } from "@/lib/triage-store";
 import type { AppConfig, ClusterCard } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+import { AuthMenu } from "./auth-menu";
 import { ClusterCard as Card } from "./cluster-card";
 import { FilterBar } from "./filter-bar";
 import { ShortcutsDialog } from "./shortcuts-dialog";
+import { TriageSync } from "./triage-sync";
 import { useIsDesktop } from "./use-is-desktop";
 import { useKeyboardNav } from "./use-keyboard-nav";
 
@@ -52,7 +54,7 @@ async function fetchJson<T>(url: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function HomeScreen() {
+export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   const searchParams = useSearchParams();
   const query = searchParams.toString();
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -245,6 +247,7 @@ export function HomeScreen() {
 
   return (
     <div className="flex h-screen flex-col">
+      {authEnabled && <TriageSync />}
       <header className="flex items-center gap-3 border-b px-4 py-2.5">
         <div className="flex items-center gap-2">
           <RiHome4Line className="size-5 text-primary" />
@@ -294,6 +297,7 @@ export function HomeScreen() {
             />
           </Button>
           <ThemeToggle />
+          {authEnabled && <AuthMenu />}
         </div>
       </header>
 

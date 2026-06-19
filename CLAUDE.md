@@ -23,10 +23,12 @@ percentile, scam signals, and distance. See `README.md` for the full picture.
   `stredo.ceskereality.cz` search for ids/URLs/price, then parses each detail
   page's `individualProduct` JSON-LD + map coords in `enrich`; one subdomain
   covers Praha + Středočeský).
-- **app (`app/`, `src/`)** — Next.js, **read-only** over Postgres via Drizzle.
-  Route handlers in `app/api/` (`clusters`, `config`); the one screen is
-  `app/page.tsx` → `src/components/home/` (`home-screen`, `cluster-card`,
-  `cluster-detail-sheet`, `percentile-meter`, `filter-bar`, `listing-map`).
+- **app (`app/`, `src/`)** — Next.js over Postgres via Drizzle. Read-only for
+  listing data; the one write path is per-user triage (`app/api/triage`), gated
+  on the better-auth session. Route handlers in `app/api/` (`clusters`,
+  `config`, `triage`, `auth/[...all]`); the one screen is `app/page.tsx` →
+  `src/components/home/` (`home-screen`, `cluster-card`, `cluster-detail-sheet`,
+  `percentile-meter`, `filter-bar`, `listing-map`, `auth-menu`, `triage-sync`).
 - **DB** — Drizzle schema in `src/db/schema.ts` for typed queries; **migrations
   are hand-written SQL** in `src/db/migrations/` (PostGIS generated `geom`
   columns + GiST indexes), applied by `worker/db/migrate.ts`. `src/db/index.ts`
@@ -66,10 +68,26 @@ percentile, scam signals, and distance. See `README.md` for the full picture.
   (`--color-blueGrey-500`, `--color-SM-Teal-300`, …, usable as `bg-blueGrey-900`
   / `text-SM-Teal-500`), (3) `@keyframes` + `--animate-*` tokens. It deliberately
   does NOT define spacing/font-size/borderRadius scales (would clash with shadcn).
-- **No auth.** This is a single-user local tool — there is no sign-in, no
-  `proxy.ts`, no auth wall. `src/lib/env.ts` validates app config
-  (`DATABASE_URL`, anchor, ingest tuning) via zod at boot. If ever exposed
-  publicly, add a basic-auth check in a new `proxy.ts`.
+- **Optional Google auth via better-auth.** Browsing is open (no wall); signing
+  in only unlocks *cross-device* triage. `src/lib/auth.ts` configures better-auth
+  (Drizzle adapter over the shared pool, Google social provider, sessions in the
+  `user`/`session`/`account`/`verification` tables from migration `0002`), exposed
+  at `app/api/auth/[...all]`; `src/lib/auth-client.ts` is the browser client.
+  Sign-in is **allowlisted** to `ALLOWED_EMAILS` (comma-separated) via a
+  `databaseHooks.user.create.before` check — empty allowlist fails closed.
+  Designed for one user today but keyed per-user, so adding a second email is the
+  whole "make it multi-user" change. Sign-in is only offered when
+  `GOOGLE_CLIENT_ID`/`SECRET` + `BETTER_AUTH_SECRET` are set (`isAuthConfigured`
+  in `env.ts`); without them the app runs exactly as the old no-account tool.
+- **Triage is local-first, server-synced when signed in.**
+  `src/lib/triage-store.ts` is a `useSyncExternalStore` store with one
+  synchronous interface and two backends: localStorage when signed out, the
+  server (`app/api/triage`) when signed in. `triage-sync.tsx` (headless) bridges
+  the better-auth session to the store — fetches the snapshot via TanStack Query,
+  `connect()`s the store, routes optimistic mutations to the API, and does a
+  one-time localStorage→server migration on first login. `src/lib/env.ts`
+  validates app config (`DATABASE_URL`, anchor, ingest tuning, auth) via zod at
+  boot.
 - **Client-side server data goes through TanStack Query.** `QueryProvider`
   (`src/components/query-provider.tsx`) wraps the app in `app/layout.tsx` —
   SSR-safe client creation, 60s default `staleTime`, devtools in dev only. Use

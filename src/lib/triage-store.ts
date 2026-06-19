@@ -3,14 +3,30 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * Client-only triage state — which clusters you've shortlisted (★) or hidden,
- * persisted to localStorage so a hunt survives reloads. The app is read-only
- * over Postgres, so this lives entirely in the browser: a tiny external store
- * subscribed to via useSyncExternalStore (no dependency, SSR-safe, and a single
- * subscription drives the whole feed).
+ * Triage state — which clusters you've shortlisted (★) or marked seen.
+ *
+ * Two modes, one synchronous interface so the UI never branches:
+ * - **local** (signed out): persisted to localStorage, exactly as before.
+ * - **remote** (signed in): the server is the source of truth. `connect()`
+ *   seeds the in-memory state from the server and installs a `push` callback;
+ *   every mutation then optimistically updates memory and fires the matching
+ *   op at the API. localStorage is left untouched while remote.
+ *
+ * A tiny external store subscribed to via useSyncExternalStore — no dependency,
+ * SSR-safe, one subscription drives the whole feed.
  */
 
 export type TriageView = "all" | "shortlist" | "hidden";
+
+// The DB-side names ("seen" === the "hidden" set in the UI).
+export type TriageStateName = "seen" | "shortlist";
+
+export type TriageSnapshot = { seen: number[]; shortlist: number[] };
+
+export type TriageOp =
+  | { type: "set"; clusterId: number; state: TriageStateName }
+  | { type: "delete"; clusterId: number }
+  | { type: "clearSeen" };
 
 type TriageState = {
   shortlisted: ReadonlySet<number>;
@@ -21,6 +37,8 @@ const STORAGE_KEY = "home-hunter:triage:v1";
 const EMPTY: TriageState = { shortlisted: new Set(), hidden: new Set() };
 
 let state: TriageState = EMPTY;
+let mode: "local" | "remote" = "local";
+let push: ((op: TriageOp) => void) | null = null;
 const listeners = new Set<() => void>();
 
 function load(): TriageState {
@@ -46,9 +64,14 @@ function load(): TriageState {
   }
 }
 
-function persist(next: TriageState) {
+function emit() {
+  for (const listener of listeners) listener();
+}
+
+function apply(next: TriageState) {
   state = next;
-  if (typeof window !== "undefined") {
+  // Persist locally only while signed out; remote mode trusts the server.
+  if (mode === "local" && typeof window !== "undefined") {
     try {
       window.localStorage.setItem(
         STORAGE_KEY,
@@ -61,7 +84,7 @@ function persist(next: TriageState) {
       // localStorage can throw (private mode, quota) — state still updates in-memory.
     }
   }
-  for (const listener of listeners) listener();
+  emit();
 }
 
 function withToggled(set: ReadonlySet<number>, id: number): Set<number> {
@@ -77,7 +100,8 @@ export const triageStore = {
   subscribe(listener: () => void) {
     // Lazily hydrate from localStorage on the first browser subscription so the
     // server and first client render agree on EMPTY (no hydration mismatch).
-    if (!hydrated) {
+    // Skipped once connected — remote state must not be clobbered by localStorage.
+    if (!hydrated && mode === "local") {
       hydrated = true;
       const loaded = load();
       if (loaded !== EMPTY) state = loaded;
@@ -91,25 +115,66 @@ export const triageStore = {
   getServerSnapshot: () => EMPTY,
 
   toggleShortlist(id: number) {
+    const wasShortlisted = state.shortlisted.has(id);
     const shortlisted = withToggled(state.shortlisted, id);
     // Shortlisting un-hides — the two are mutually exclusive intents.
     const hidden = new Set(state.hidden);
     if (shortlisted.has(id)) hidden.delete(id);
-    persist({ shortlisted, hidden });
+    apply({ shortlisted, hidden });
+    push?.(
+      wasShortlisted
+        ? { type: "delete", clusterId: id }
+        : { type: "set", clusterId: id, state: "shortlist" },
+    );
   },
   hide(id: number) {
     const hidden = new Set(state.hidden).add(id);
     const shortlisted = new Set(state.shortlisted);
     shortlisted.delete(id);
-    persist({ shortlisted, hidden });
+    apply({ shortlisted, hidden });
+    push?.({ type: "set", clusterId: id, state: "seen" });
   },
   unhide(id: number) {
     const hidden = new Set(state.hidden);
     hidden.delete(id);
-    persist({ ...state, hidden });
+    apply({ ...state, hidden });
+    push?.({ type: "delete", clusterId: id });
   },
   clearHidden() {
-    persist({ ...state, hidden: new Set() });
+    apply({ ...state, hidden: new Set() });
+    push?.({ type: "clearSeen" });
+  },
+
+  /** Switch to remote mode: adopt the server snapshot and route writes to `pusher`. */
+  connect(snapshot: TriageSnapshot, pusher: (op: TriageOp) => void) {
+    mode = "remote";
+    push = pusher;
+    state = {
+      shortlisted: new Set(snapshot.shortlist),
+      hidden: new Set(snapshot.seen),
+    };
+    emit();
+  },
+  /** Back to signed-out: drop the remote writer and re-read localStorage. */
+  disconnect() {
+    mode = "local";
+    push = null;
+    state = load();
+    emit();
+  },
+  /** Snapshot of the current localStorage triage, for one-time migration on first login. */
+  exportLocal(): TriageSnapshot {
+    const local = load();
+    return { seen: [...local.hidden], shortlist: [...local.shortlisted] };
+  },
+  clearLocal() {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        // ignore — nothing actionable if removal fails.
+      }
+    }
   },
 };
 

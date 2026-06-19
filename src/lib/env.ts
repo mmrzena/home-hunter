@@ -43,9 +43,36 @@ const envSchema = z.object({
 
   // Feed window for "new / price-changed" listings, in hours.
   FEED_WINDOW_HOURS: z.coerce.number().int().positive().default(48),
+
+  // Auth (better-auth + Google). All optional so the worker and a fresh local
+  // checkout boot without them; sign-in simply stays disabled until they're set.
+  // BETTER_AUTH_SECRET signs sessions; generate with `openssl rand -base64 32`.
+  BETTER_AUTH_SECRET: z.string().optional(),
+  // Public base URL of the app (e.g. https://home-hunter.vercel.app). Defaults
+  // to localhost for dev; set on Vercel so OAuth redirects resolve.
+  BETTER_AUTH_URL: z.string().url().default("http://localhost:3000"),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  // Comma-separated allowlist of Google emails permitted to sign in. One today;
+  // add a second to flip this into a two-user tool — the data is keyed per user.
+  ALLOWED_EMAILS: z
+    .string()
+    .optional()
+    .transform((value) =>
+      (value ?? "")
+        .split(",")
+        .map((entry) => entry.trim().toLowerCase())
+        .filter(Boolean),
+    ),
 });
 
 export const env = envSchema.parse(process.env);
+
+// Sign-in is only offered when Google OAuth + a session secret are configured.
+export const isAuthConfigured =
+  env.GOOGLE_CLIENT_ID !== undefined &&
+  env.GOOGLE_CLIENT_SECRET !== undefined &&
+  env.BETTER_AUTH_SECRET !== undefined;
 
 export const anchor =
   env.ANCHOR_LAT !== undefined && env.ANCHOR_LNG !== undefined
