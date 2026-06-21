@@ -156,22 +156,6 @@ async function selectClusters(
   return rows.map(toCard);
 }
 
-/**
- * Clusters by id, ignoring every feed filter *and* `is_active` — the liked and
- * seen collections must stay visible no matter what the filter bar says, even
- * once a listing is delisted. Counts come from the triage store, so order here
- * is just newest-first for a stable list.
- */
-export async function getClustersByIds(ids: number[]): Promise<ClusterCard[]> {
-  if (!ids.length) return [];
-  return selectClusters(
-    sql`c.id = ANY(${ids})`,
-    sql`rep.first_seen_at DESC`,
-    ids.length,
-    distanceExpr(),
-  );
-}
-
 export async function getClusters(
   filters: ClusterFilters,
 ): Promise<ClusterCard[]> {

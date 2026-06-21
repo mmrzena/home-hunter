@@ -8,10 +8,10 @@ import {
   RiMap2Line,
   RiRefreshLine,
 } from "@remixicon/react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -59,13 +59,6 @@ async function fetchJson<T>(url: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-/** `/api/clusters?id=…` — fetch a set of clusters by id, ignoring the filters. */
-function byIdUrl(ids: number[]): string {
-  const params = new URLSearchParams();
-  for (const id of ids) params.append("id", String(id));
-  return `/api/clusters?${params.toString()}`;
-}
-
 /**
  * Order cards newest-added-first. A card's rank is its position in the triage
  * set's insertion order (JS Sets preserve it — newest additions land last),
@@ -99,13 +92,6 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   const isDesktop = useIsDesktop();
 
   const { liked, hidden } = useTriage();
-  // Counts come straight from the triage store, so they reflect the whole
-  // collection regardless of what the filter bar currently matches.
-  const likedCount = liked.size;
-  const hiddenCount = hidden.size;
-
-  const likedIds = useMemo(() => [...liked].sort((a, b) => a - b), [liked]);
-  const hiddenIds = useMemo(() => [...hidden].sort((a, b) => a - b), [hidden]);
 
   const selectAndScroll = useCallback((id: number) => {
     setSelectedId(id);
@@ -139,83 +125,28 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     select: (data) => data.clusters,
   });
 
-  // The liked + seen collections are fetched by id, so they survive any filter.
-  // keepPreviousData holds the current list on screen while the id set changes
-  // (e.g. after a like/restore), so toggling one card never flashes skeletons —
-  // the optimistic `byRecency` filter drops the affected card immediately.
-  const likedQuery = useQuery({
-    queryKey: ["clusters", "by-id", likedIds.join(",")],
-    queryFn: () => fetchJson<{ clusters: ClusterCard[] }>(byIdUrl(likedIds)),
-    select: (data) => data.clusters,
-    enabled: view === "liked" && likedIds.length > 0,
-    placeholderData: keepPreviousData,
-  });
-
-  const seenQuery = useQuery({
-    queryKey: ["clusters", "by-id", hiddenIds.join(",")],
-    queryFn: () => fetchJson<{ clusters: ClusterCard[] }>(byIdUrl(hiddenIds)),
-    select: (data) => data.clusters,
-    enabled: view === "hidden" && hiddenIds.length > 0,
-    placeholderData: keepPreviousData,
-  });
-
   const anchor = config.data?.anchor ?? null;
   const cards = clusters.data ?? NO_CARDS;
 
-  // Durable cache of every card we've loaded (feed, liked, seen). A restored or
-  // un-liked house lives only here once it leaves its triage set *and* the feed
-  // query doesn't return it (off-filter, delisted, or past the limit) — without
-  // this it would vanish from every tab. A ref, so it accumulates across renders
-  // and survives the by-id refetch that drops the house from the seen list.
-  const knownCards = useRef(new Map<number, ClusterCard>()).current;
-  for (const card of cards) knownCards.set(card.clusterId, card);
-  for (const card of likedQuery.data ?? NO_CARDS)
-    knownCards.set(card.clusterId, card);
-  for (const card of seenQuery.data ?? NO_CARDS)
-    knownCards.set(card.clusterId, card);
-
-  // The All feed: the filtered server feed (in its sorted order) minus anything
-  // triaged, plus any known-but-untriaged house the feed query left out (e.g. a
-  // house just restored from Seen) appended at the end.
-  const feedCards = useMemo(() => {
-    const isTriaged = (id: number) => liked.has(id) || hidden.has(id);
-    const result = cards.filter((card) => !isTriaged(card.clusterId));
-    const inFeed = new Set(cards.map((card) => card.clusterId));
-    for (const card of knownCards.values()) {
-      if (!inFeed.has(card.clusterId) && !isTriaged(card.clusterId))
-        result.push(card);
-    }
-    return result;
-  }, [cards, liked, hidden, knownCards]);
-  // Order each collection newest-added-first (and re-filter through the live
-  // set so an optimistic un-like / restore drops a card before the refetch).
-  const likedCards = useMemo(
-    () => byRecency(likedQuery.data ?? NO_CARDS, liked),
-    [likedQuery.data, liked],
+  // All three tabs partition the one filtered feed, so they all respect the
+  // filter bar. The triaged tabs are ordered newest-added-first; `byRecency`
+  // also drops anything no longer in its set (optimistic un-like / restore).
+  const feedCards = useMemo(
+    () =>
+      cards.filter(
+        (card) => !liked.has(card.clusterId) && !hidden.has(card.clusterId),
+      ),
+    [cards, liked, hidden],
   );
-  const seenCards = useMemo(
-    () => byRecency(seenQuery.data ?? NO_CARDS, hidden),
-    [seenQuery.data, hidden],
-  );
+  const likedCards = useMemo(() => byRecency(cards, liked), [cards, liked]);
+  const seenCards = useMemo(() => byRecency(cards, hidden), [cards, hidden]);
 
-  // One source of truth for the active tab — query status and card list both
-  // derive from it, so the three branches never drift apart.
-  const activeQuery =
-    view === "liked" ? likedQuery : view === "hidden" ? seenQuery : clusters;
+  // Counts (and so the tab badges) reflect what's listed under the active filter.
+  const likedCount = likedCards.length;
+  const hiddenCount = seenCards.length;
+
   const visible =
     view === "liked" ? likedCards : view === "hidden" ? seenCards : feedCards;
-
-  // `liked`/`seen` are by-id collections: while a refetch brings freshly-triaged
-  // cards in (e.g. you marked one seen, then opened the tab), show a skeleton
-  // per not-yet-loaded card at the top so it doesn't pop in silently.
-  const pendingCount =
-    view === "all"
-      ? 0
-      : Math.max(
-          0,
-          (view === "liked" ? likedCount : hiddenCount) - visible.length,
-        );
-  const showPending = activeQuery.isFetching && pendingCount > 0;
 
   const deals = visible.filter((card) => card.isGoodDeal).length;
   const cautions = visible.filter(
@@ -288,39 +219,38 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3 max-lg:pb-20">
-        {activeQuery.isLoading ? (
+        {clusters.isLoading ? (
           Array.from({ length: 6 }, (_, index) => (
             <Skeleton key={`skeleton-${index}`} className="h-40 w-full" />
           ))
-        ) : activeQuery.isError ? (
+        ) : clusters.isError ? (
           <p className="p-4 text-sm text-destructive">
             Couldn't load listings. Is the worker pipeline run and the DB up?
           </p>
-        ) : visible.length === 0 && !showPending ? (
-          <EmptyState view={view} hasCards={cards.length > 0} />
+        ) : visible.length === 0 ? (
+          <EmptyState
+            view={view}
+            hasCards={cards.length > 0}
+            likedTotal={liked.size}
+            hiddenTotal={hidden.size}
+          />
         ) : (
-          <>
-            {showPending &&
-              Array.from({ length: pendingCount }, (_, index) => (
-                <Skeleton key={`pending-${index}`} className="h-40 w-full" />
-              ))}
-            {visible.map((card) => (
-              <Card
-                key={card.clusterId}
-                card={card}
-                anchorLabel={anchor?.label ?? null}
-                isSelected={card.clusterId === selectedId}
-                isLiked={liked.has(card.clusterId)}
-                isHidden={hidden.has(card.clusterId)}
-                isExpanded={card.clusterId === expandedId}
-                onSelect={selectAndScroll}
-                onToggleExpand={handleToggleExpand}
-                onToggleLike={(id) => triageStore.toggleLike(id)}
-                onToggleHide={handleToggleHide}
-                onHover={setHoveredId}
-              />
-            ))}
-          </>
+          visible.map((card) => (
+            <Card
+              key={card.clusterId}
+              card={card}
+              anchorLabel={anchor?.label ?? null}
+              isSelected={card.clusterId === selectedId}
+              isLiked={liked.has(card.clusterId)}
+              isHidden={hidden.has(card.clusterId)}
+              isExpanded={card.clusterId === expandedId}
+              onSelect={selectAndScroll}
+              onToggleExpand={handleToggleExpand}
+              onToggleLike={(id) => triageStore.toggleLike(id)}
+              onToggleHide={handleToggleHide}
+              onHover={setHoveredId}
+            />
+          ))
         )}
       </div>
     </div>
@@ -360,7 +290,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
         </div>
         <div className="flex flex-wrap items-center gap-1.5 text-sm">
           <span className="font-mono text-muted-foreground">
-            {activeQuery.isLoading ? "loading…" : `${visible.length} listings`}
+            {clusters.isLoading ? "loading…" : `${visible.length} listings`}
           </span>
           {deals > 0 && (
             <span className="rounded-full bg-green-600/10 px-2 py-0.5 font-mono text-xs font-medium text-green-700 dark:text-green-400">
@@ -482,17 +412,27 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
 function EmptyState({
   view,
   hasCards,
+  likedTotal,
+  hiddenTotal,
 }: {
   view: TriageView;
   hasCards: boolean;
+  likedTotal: number;
+  hiddenTotal: number;
 }) {
   if (view === "liked") {
     return (
       <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
         <RiHeart3Fill className="size-6 text-rose-500" />
         <p className="text-sm">
-          Nothing liked yet. Hit <kbd>s</kbd> on a listing — or the heart — to
-          keep it here.
+          {likedTotal > 0 ? (
+            "None of your liked houses match the current filters."
+          ) : (
+            <>
+              Nothing liked yet. Hit <kbd>s</kbd> on a listing — or the heart —
+              to keep it here.
+            </>
+          )}
         </p>
       </div>
     );
@@ -502,8 +442,14 @@ function EmptyState({
       <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
         <RiHome4Line className="size-6" />
         <p className="text-sm">
-          Nothing marked seen yet. Press <kbd>x</kbd> on a listing to dismiss
-          it.
+          {hiddenTotal > 0 ? (
+            "None of your seen houses match the current filters."
+          ) : (
+            <>
+              Nothing marked seen yet. Press <kbd>x</kbd> on a listing to
+              dismiss it.
+            </>
+          )}
         </p>
       </div>
     );
