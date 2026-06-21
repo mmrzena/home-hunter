@@ -11,7 +11,7 @@ import {
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -162,15 +162,31 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   const anchor = config.data?.anchor ?? null;
   const cards = clusters.data ?? NO_CARDS;
 
-  // The live feed excludes everything already triaged — liked and seen each
-  // get their own tab.
-  const feedCards = useMemo(
-    () =>
-      cards.filter(
-        (card) => !liked.has(card.clusterId) && !hidden.has(card.clusterId),
-      ),
-    [cards, liked, hidden],
-  );
+  // Durable cache of every card we've loaded (feed, liked, seen). A restored or
+  // un-liked house lives only here once it leaves its triage set *and* the feed
+  // query doesn't return it (off-filter, delisted, or past the limit) — without
+  // this it would vanish from every tab. A ref, so it accumulates across renders
+  // and survives the by-id refetch that drops the house from the seen list.
+  const knownCards = useRef(new Map<number, ClusterCard>()).current;
+  for (const card of cards) knownCards.set(card.clusterId, card);
+  for (const card of likedQuery.data ?? NO_CARDS)
+    knownCards.set(card.clusterId, card);
+  for (const card of seenQuery.data ?? NO_CARDS)
+    knownCards.set(card.clusterId, card);
+
+  // The All feed: the filtered server feed (in its sorted order) minus anything
+  // triaged, plus any known-but-untriaged house the feed query left out (e.g. a
+  // house just restored from Seen) appended at the end.
+  const feedCards = useMemo(() => {
+    const isTriaged = (id: number) => liked.has(id) || hidden.has(id);
+    const result = cards.filter((card) => !isTriaged(card.clusterId));
+    const inFeed = new Set(cards.map((card) => card.clusterId));
+    for (const card of knownCards.values()) {
+      if (!inFeed.has(card.clusterId) && !isTriaged(card.clusterId))
+        result.push(card);
+    }
+    return result;
+  }, [cards, liked, hidden, knownCards]);
   // Order each collection newest-added-first (and re-filter through the live
   // set so an optimistic un-like / restore drops a card before the refetch).
   const likedCards = useMemo(
