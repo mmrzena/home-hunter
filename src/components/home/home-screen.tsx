@@ -8,7 +8,7 @@ import {
   RiMap2Line,
   RiRefreshLine,
 } from "@remixicon/react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -140,11 +140,15 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   });
 
   // The liked + seen collections are fetched by id, so they survive any filter.
+  // keepPreviousData holds the current list on screen while the id set changes
+  // (e.g. after a like/restore), so toggling one card never flashes skeletons —
+  // the optimistic `byRecency` filter drops the affected card immediately.
   const likedQuery = useQuery({
     queryKey: ["clusters", "by-id", likedIds.join(",")],
     queryFn: () => fetchJson<{ clusters: ClusterCard[] }>(byIdUrl(likedIds)),
     select: (data) => data.clusters,
     enabled: view === "liked" && likedIds.length > 0,
+    placeholderData: keepPreviousData,
   });
 
   const seenQuery = useQuery({
@@ -152,6 +156,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     queryFn: () => fetchJson<{ clusters: ClusterCard[] }>(byIdUrl(hiddenIds)),
     select: (data) => data.clusters,
     enabled: view === "hidden" && hiddenIds.length > 0,
+    placeholderData: keepPreviousData,
   });
 
   const anchor = config.data?.anchor ?? null;
