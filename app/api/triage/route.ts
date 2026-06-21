@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { db, userTriage } from "@/db";
@@ -26,10 +26,13 @@ export async function GET(request: NextRequest) {
   const userId = await getUserId(request);
   if (!userId) return NextResponse.json({ seen: [], shortlist: [] });
 
+  // Oldest-added first, so the client's Set keeps insertion order (newest last)
+  // and the feed can present liked / seen newest-added-first.
   const rows = await db
     .select({ clusterId: userTriage.clusterId, state: userTriage.state })
     .from(userTriage)
-    .where(eq(userTriage.userId, userId));
+    .where(eq(userTriage.userId, userId))
+    .orderBy(asc(userTriage.createdAt));
 
   const seen: number[] = [];
   const shortlist: number[] = [];

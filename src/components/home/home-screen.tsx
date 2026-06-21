@@ -66,6 +66,26 @@ function byIdUrl(ids: number[]): string {
   return `/api/clusters?${params.toString()}`;
 }
 
+/**
+ * Order cards newest-added-first. A card's rank is its position in the triage
+ * set's insertion order (JS Sets preserve it — newest additions land last),
+ * reversed so the latest like / seen leads. Also drops any card no longer in
+ * the set, so an optimistic un-like / restore disappears before the refetch.
+ */
+function byRecency(
+  cards: ClusterCard[],
+  order: ReadonlySet<number>,
+): ClusterCard[] {
+  const rank = new Map<number, number>();
+  let index = 0;
+  for (const id of order) rank.set(id, index++);
+  return cards
+    .filter((card) => rank.has(card.clusterId))
+    .sort(
+      (a, b) => (rank.get(b.clusterId) ?? 0) - (rank.get(a.clusterId) ?? 0),
+    );
+}
+
 export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   const searchParams = useSearchParams();
   const query = searchParams.toString();
@@ -146,16 +166,14 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       ),
     [cards, liked, hidden],
   );
-  // Re-filter the by-id results through the live sets so an optimistic
-  // un-like / restore drops a card immediately, before the refetch lands.
+  // Order each collection newest-added-first (and re-filter through the live
+  // set so an optimistic un-like / restore drops a card before the refetch).
   const likedCards = useMemo(
-    () =>
-      (likedQuery.data ?? NO_CARDS).filter((card) => liked.has(card.clusterId)),
+    () => byRecency(likedQuery.data ?? NO_CARDS, liked),
     [likedQuery.data, liked],
   );
   const seenCards = useMemo(
-    () =>
-      (seenQuery.data ?? NO_CARDS).filter((card) => hidden.has(card.clusterId)),
+    () => byRecency(seenQuery.data ?? NO_CARDS, hidden),
     [seenQuery.data, hidden],
   );
 
