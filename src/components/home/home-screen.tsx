@@ -182,20 +182,24 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     [seenQuery.data, hidden],
   );
 
+  // One source of truth for the active tab — query status and card list both
+  // derive from it, so the three branches never drift apart.
+  const activeQuery =
+    view === "liked" ? likedQuery : view === "hidden" ? seenQuery : clusters;
   const visible =
     view === "liked" ? likedCards : view === "hidden" ? seenCards : feedCards;
-  const listLoading =
-    view === "liked"
-      ? likedQuery.isLoading
-      : view === "hidden"
-        ? seenQuery.isLoading
-        : clusters.isLoading;
-  const listError =
-    view === "liked"
-      ? likedQuery.isError
-      : view === "hidden"
-        ? seenQuery.isError
-        : clusters.isError;
+
+  // `liked`/`seen` are by-id collections: while a refetch brings freshly-triaged
+  // cards in (e.g. you marked one seen, then opened the tab), show a skeleton
+  // per not-yet-loaded card at the top so it doesn't pop in silently.
+  const pendingCount =
+    view === "all"
+      ? 0
+      : Math.max(
+          0,
+          (view === "liked" ? likedCount : hiddenCount) - visible.length,
+        );
+  const showPending = activeQuery.isFetching && pendingCount > 0;
 
   const deals = visible.filter((card) => card.isGoodDeal).length;
   const cautions = visible.filter(
@@ -268,33 +272,39 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3 max-lg:pb-20">
-        {listLoading ? (
+        {activeQuery.isLoading ? (
           Array.from({ length: 6 }, (_, index) => (
             <Skeleton key={`skeleton-${index}`} className="h-40 w-full" />
           ))
-        ) : listError ? (
+        ) : activeQuery.isError ? (
           <p className="p-4 text-sm text-destructive">
             Couldn't load listings. Is the worker pipeline run and the DB up?
           </p>
-        ) : visible.length === 0 ? (
+        ) : visible.length === 0 && !showPending ? (
           <EmptyState view={view} hasCards={cards.length > 0} />
         ) : (
-          visible.map((card) => (
-            <Card
-              key={card.clusterId}
-              card={card}
-              anchorLabel={anchor?.label ?? null}
-              isSelected={card.clusterId === selectedId}
-              isLiked={liked.has(card.clusterId)}
-              isHidden={hidden.has(card.clusterId)}
-              isExpanded={card.clusterId === expandedId}
-              onSelect={selectAndScroll}
-              onToggleExpand={handleToggleExpand}
-              onToggleLike={(id) => triageStore.toggleLike(id)}
-              onToggleHide={handleToggleHide}
-              onHover={setHoveredId}
-            />
-          ))
+          <>
+            {showPending &&
+              Array.from({ length: pendingCount }, (_, index) => (
+                <Skeleton key={`pending-${index}`} className="h-40 w-full" />
+              ))}
+            {visible.map((card) => (
+              <Card
+                key={card.clusterId}
+                card={card}
+                anchorLabel={anchor?.label ?? null}
+                isSelected={card.clusterId === selectedId}
+                isLiked={liked.has(card.clusterId)}
+                isHidden={hidden.has(card.clusterId)}
+                isExpanded={card.clusterId === expandedId}
+                onSelect={selectAndScroll}
+                onToggleExpand={handleToggleExpand}
+                onToggleLike={(id) => triageStore.toggleLike(id)}
+                onToggleHide={handleToggleHide}
+                onHover={setHoveredId}
+              />
+            ))}
+          </>
         )}
       </div>
     </div>
@@ -334,7 +344,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
         </div>
         <div className="flex flex-wrap items-center gap-1.5 text-sm">
           <span className="font-mono text-muted-foreground">
-            {listLoading ? "loading…" : `${visible.length} listings`}
+            {activeQuery.isLoading ? "loading…" : `${visible.length} listings`}
           </span>
           {deals > 0 && (
             <span className="rounded-full bg-green-600/10 px-2 py-0.5 font-mono text-xs font-medium text-green-700 dark:text-green-400">
