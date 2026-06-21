@@ -9,9 +9,9 @@ import {
   RiCloseLine,
   RiExternalLinkLine,
   RiGroupLine,
+  RiHeart3Fill,
+  RiHeart3Line,
   RiMapPin2Line,
-  RiStarFill,
-  RiStarLine,
   RiTrainLine,
 } from "@remixicon/react";
 
@@ -46,24 +46,24 @@ export function ClusterCard({
   card,
   anchorLabel,
   isSelected,
-  isShortlisted,
+  isLiked,
   isHidden,
   isExpanded,
   onSelect,
   onToggleExpand,
-  onToggleShortlist,
+  onToggleLike,
   onToggleHide,
   onHover,
 }: {
   card: Card;
   anchorLabel: string | null;
   isSelected: boolean;
-  isShortlisted: boolean;
+  isLiked: boolean;
   isHidden: boolean;
   isExpanded: boolean;
   onSelect: (id: number) => void;
   onToggleExpand: (id: number) => void;
-  onToggleShortlist: (id: number) => void;
+  onToggleLike: (id: number) => void;
   onToggleHide: (id: number) => void;
   onHover: (id: number | null) => void;
 }) {
@@ -80,9 +80,7 @@ export function ClusterCard({
         "group/card @container relative shrink-0 overflow-hidden rounded-lg border transition-[border-color,box-shadow,background-color] duration-150",
         isSelected
           ? "border-primary bg-primary/5 ring-1 ring-primary"
-          : isShortlisted
-            ? "border-amber-400/70 dark:border-amber-500/50"
-            : "border-border hover:bg-muted/40",
+          : "border-border hover:bg-muted/40",
         isHidden && "opacity-60",
       )}
     >
@@ -272,25 +270,25 @@ export function ClusterCard({
       </div>
 
       {/* Triage actions — siblings of the card button (not nested), so the
-          markup stays valid. Star persists when active; hide reveals on hover. */}
+          markup stays valid. The heart persists when active; hide reveals on hover. */}
       <div className="absolute top-2 right-2 flex items-center gap-1">
         <button
           type="button"
-          aria-label={isShortlisted ? "Remove from shortlist" : "Shortlist"}
-          aria-pressed={isShortlisted}
-          title={isShortlisted ? "Shortlisted — press s" : "Shortlist (s)"}
-          onClick={() => onToggleShortlist(card.clusterId)}
+          aria-label={isLiked ? "Remove from liked" : "I like it"}
+          aria-pressed={isLiked}
+          title={isLiked ? "Liked — press s to remove" : "I like it (s)"}
+          onClick={() => onToggleLike(card.clusterId)}
           className={cn(
             "flex size-7 items-center justify-center rounded-md transition-colors",
-            isShortlisted
-              ? "text-amber-500 hover:bg-amber-500/10"
-              : "text-muted-foreground hover:bg-muted hover:text-amber-500 lg:opacity-0 lg:focus-visible:opacity-100 lg:group-hover/card:opacity-100",
+            isLiked
+              ? "text-rose-500 hover:bg-rose-500/10"
+              : "text-muted-foreground hover:bg-muted hover:text-rose-500 lg:opacity-0 lg:focus-visible:opacity-100 lg:group-hover/card:opacity-100",
           )}
         >
-          {isShortlisted ? (
-            <RiStarFill className="size-4" />
+          {isLiked ? (
+            <RiHeart3Fill className="size-4" />
           ) : (
-            <RiStarLine className="size-4" />
+            <RiHeart3Line className="size-4" />
           )}
         </button>
         <button

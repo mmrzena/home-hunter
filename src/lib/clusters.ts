@@ -103,41 +103,19 @@ function toCard(row: any): ClusterCard {
   };
 }
 
-export async function getClusters(
-  filters: ClusterFilters,
-): Promise<ClusterCard[]> {
-  const distance = anchor
+function distanceExpr(): Fragment {
+  return anchor
     ? sql`ST_Distance(rep.geom::geography, ST_SetSRID(ST_MakePoint(${anchor.lng}, ${anchor.lat}), 4326)::geography) / 1000.0`
     : sql`NULL::float8`;
+}
 
-  const conds: Fragment[] = [sql`rep.is_active`];
-  if (filters.maxPrice)
-    conds.push(sql`rep.price > 0 AND rep.price <= ${filters.maxPrice}`);
-  if (filters.minUsable)
-    conds.push(sql`rep.usable_area_m2 >= ${filters.minUsable}`);
-  if (filters.maxUsable)
-    conds.push(sql`rep.usable_area_m2 <= ${filters.maxUsable}`);
-  if (filters.minLand) conds.push(sql`rep.land_area_m2 >= ${filters.minLand}`);
-  if (filters.areas?.length)
-    conds.push(sql`rep.cadastral_code = ANY(${filters.areas})`);
-  // Match clusters that carry a listing from the source(s) — not just the
-  // representative, since the same house is often repped by a different portal.
-  if (filters.sources?.length)
-    conds.push(
-      sql`EXISTS (SELECT 1 FROM listings m WHERE m.cluster_id = c.id AND m.source = ANY(${filters.sources}))`,
-    );
-  if (filters.verdict) conds.push(sql`rep.deal_verdict = ${filters.verdict}`);
-  if (filters.goodDealsOnly) conds.push(sql`rep.is_good_deal`);
-  if (filters.kind) conds.push(sql`rep.property_kind = ${filters.kind}`);
-  if (filters.freshOnly)
-    conds.push(
-      sql`rep.first_seen_at > now() - make_interval(hours => ${env.FEED_WINDOW_HOURS})`,
-    );
-
-  let where = conds[0];
-  for (let index = 1; index < conds.length; index += 1)
-    where = sql`${where} AND ${conds[index]}`;
-
+/** The shared cluster SELECT — every caller varies only WHERE / ORDER / LIMIT. */
+async function selectClusters(
+  where: Fragment,
+  order: Fragment,
+  limit: number,
+  distance: Fragment,
+): Promise<ClusterCard[]> {
   const rows = await sql`
     SELECT
       c.id::int                       AS cluster_id,
@@ -172,11 +150,67 @@ export async function getClusters(
     FROM clusters c
     JOIN listings rep ON rep.id = c.representative_listing_id
     WHERE ${where}
-    ORDER BY ${orderBy(filters.sort ?? "newest", distance)}
-    LIMIT ${filters.limit ?? 500}
+    ORDER BY ${order}
+    LIMIT ${limit}
   `;
+  return rows.map(toCard);
+}
 
-  let cards = rows.map(toCard);
+/**
+ * Clusters by id, ignoring every feed filter *and* `is_active` — the liked and
+ * seen collections must stay visible no matter what the filter bar says, even
+ * once a listing is delisted. Counts come from the triage store, so order here
+ * is just newest-first for a stable list.
+ */
+export async function getClustersByIds(ids: number[]): Promise<ClusterCard[]> {
+  if (!ids.length) return [];
+  return selectClusters(
+    sql`c.id = ANY(${ids})`,
+    sql`rep.first_seen_at DESC`,
+    ids.length,
+    distanceExpr(),
+  );
+}
+
+export async function getClusters(
+  filters: ClusterFilters,
+): Promise<ClusterCard[]> {
+  const distance = distanceExpr();
+
+  const conds: Fragment[] = [sql`rep.is_active`];
+  if (filters.maxPrice)
+    conds.push(sql`rep.price > 0 AND rep.price <= ${filters.maxPrice}`);
+  if (filters.minUsable)
+    conds.push(sql`rep.usable_area_m2 >= ${filters.minUsable}`);
+  if (filters.maxUsable)
+    conds.push(sql`rep.usable_area_m2 <= ${filters.maxUsable}`);
+  if (filters.minLand) conds.push(sql`rep.land_area_m2 >= ${filters.minLand}`);
+  if (filters.areas?.length)
+    conds.push(sql`rep.cadastral_code = ANY(${filters.areas})`);
+  // Match clusters that carry a listing from the source(s) — not just the
+  // representative, since the same house is often repped by a different portal.
+  if (filters.sources?.length)
+    conds.push(
+      sql`EXISTS (SELECT 1 FROM listings m WHERE m.cluster_id = c.id AND m.source = ANY(${filters.sources}))`,
+    );
+  if (filters.verdict) conds.push(sql`rep.deal_verdict = ${filters.verdict}`);
+  if (filters.goodDealsOnly) conds.push(sql`rep.is_good_deal`);
+  if (filters.kind) conds.push(sql`rep.property_kind = ${filters.kind}`);
+  if (filters.freshOnly)
+    conds.push(
+      sql`rep.first_seen_at > now() - make_interval(hours => ${env.FEED_WINDOW_HOURS})`,
+    );
+
+  let where = conds[0];
+  for (let index = 1; index < conds.length; index += 1)
+    where = sql`${where} AND ${conds[index]}`;
+
+  let cards = await selectClusters(
+    where,
+    orderBy(filters.sort ?? "newest", distance),
+    filters.limit ?? 500,
+    distance,
+  );
 
   // Proximity to Prague + the nearest station is computed in JS (bundled OSM
   // data), so its filter/sort live here rather than in SQL. They operate on the

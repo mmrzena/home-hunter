@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * Triage state — which clusters you've shortlisted (★) or marked seen.
+ * Triage state — which clusters you've liked (♥) or marked seen.
  *
  * Two modes, one synchronous interface so the UI never branches:
  * - **local** (signed out): persisted to localStorage, exactly as before.
@@ -14,11 +14,17 @@ import { useSyncExternalStore } from "react";
  *
  * A tiny external store subscribed to via useSyncExternalStore — no dependency,
  * SSR-safe, one subscription drives the whole feed.
+ *
+ * Note on naming: the UI concept is "liked", but the DB/API state is still
+ * `shortlist` (the durable contract with `/api/triage` and `user_triage`), so
+ * the wire types below keep that name while the in-memory state uses `liked`.
  */
 
-export type TriageView = "all" | "shortlist" | "hidden";
+// The feed column's tabs: the live feed, the liked collection, and the seen
+// collection. Liked and seen are fetched by id, so they ignore the filter bar.
+export type TriageView = "all" | "liked" | "hidden";
 
-// The DB-side names ("seen" === the "hidden" set in the UI).
+// The DB-side names ("seen" === the "hidden" set, "shortlist" === "liked").
 export type TriageStateName = "seen" | "shortlist";
 
 export type TriageSnapshot = { seen: number[]; shortlist: number[] };
@@ -29,12 +35,12 @@ export type TriageOp =
   | { type: "clearSeen" };
 
 type TriageState = {
-  shortlisted: ReadonlySet<number>;
+  liked: ReadonlySet<number>;
   hidden: ReadonlySet<number>;
 };
 
 const STORAGE_KEY = "home-hunter:triage:v1";
-const EMPTY: TriageState = { shortlisted: new Set(), hidden: new Set() };
+const EMPTY: TriageState = { liked: new Set(), hidden: new Set() };
 
 let state: TriageState = EMPTY;
 let mode: "local" | "remote" = "local";
@@ -48,7 +54,13 @@ function load(): TriageState {
     if (!raw) return EMPTY;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return EMPTY;
-    const record = parsed as { shortlisted?: unknown; hidden?: unknown };
+    // `shortlisted` is the legacy persisted key — read it so an existing
+    // signed-out hunt survives the rename to "liked".
+    const record = parsed as {
+      liked?: unknown;
+      shortlisted?: unknown;
+      hidden?: unknown;
+    };
     const toSet = (value: unknown): Set<number> =>
       new Set(
         Array.isArray(value)
@@ -56,7 +68,7 @@ function load(): TriageState {
           : [],
       );
     return {
-      shortlisted: toSet(record.shortlisted),
+      liked: toSet(record.liked ?? record.shortlisted),
       hidden: toSet(record.hidden),
     };
   } catch {
@@ -76,7 +88,7 @@ function apply(next: TriageState) {
       window.localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({
-          shortlisted: [...next.shortlisted],
+          liked: [...next.liked],
           hidden: [...next.hidden],
         }),
       );
@@ -114,24 +126,24 @@ export const triageStore = {
   getSnapshot: () => state,
   getServerSnapshot: () => EMPTY,
 
-  toggleShortlist(id: number) {
-    const wasShortlisted = state.shortlisted.has(id);
-    const shortlisted = withToggled(state.shortlisted, id);
-    // Shortlisting un-hides — the two are mutually exclusive intents.
+  toggleLike(id: number) {
+    const wasLiked = state.liked.has(id);
+    const liked = withToggled(state.liked, id);
+    // Liking un-hides — like and seen are mutually exclusive intents.
     const hidden = new Set(state.hidden);
-    if (shortlisted.has(id)) hidden.delete(id);
-    apply({ shortlisted, hidden });
+    if (liked.has(id)) hidden.delete(id);
+    apply({ liked, hidden });
     push?.(
-      wasShortlisted
+      wasLiked
         ? { type: "delete", clusterId: id }
         : { type: "set", clusterId: id, state: "shortlist" },
     );
   },
   hide(id: number) {
     const hidden = new Set(state.hidden).add(id);
-    const shortlisted = new Set(state.shortlisted);
-    shortlisted.delete(id);
-    apply({ shortlisted, hidden });
+    const liked = new Set(state.liked);
+    liked.delete(id);
+    apply({ liked, hidden });
     push?.({ type: "set", clusterId: id, state: "seen" });
   },
   unhide(id: number) {
@@ -150,7 +162,7 @@ export const triageStore = {
     mode = "remote";
     push = pusher;
     state = {
-      shortlisted: new Set(snapshot.shortlist),
+      liked: new Set(snapshot.shortlist),
       hidden: new Set(snapshot.seen),
     };
     emit();
@@ -165,7 +177,7 @@ export const triageStore = {
   /** Snapshot of the current localStorage triage, for one-time migration on first login. */
   exportLocal(): TriageSnapshot {
     const local = load();
-    return { seen: [...local.hidden], shortlist: [...local.shortlisted] };
+    return { seen: [...local.hidden], shortlist: [...local.liked] };
   },
   clearLocal() {
     if (typeof window !== "undefined") {

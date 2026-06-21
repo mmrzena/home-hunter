@@ -13,7 +13,7 @@ const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
   { keys: ["j"], label: "Next listing" },
   { keys: ["k"], label: "Previous listing" },
   { keys: ["o"], label: "Open details" },
-  { keys: ["s"], label: "Shortlist / unshortlist" },
+  { keys: ["s"], label: "Like / unlike" },
   { keys: ["x"], label: "Mark as seen" },
   { keys: ["r"], label: "Refresh feed" },
   { keys: ["Esc"], label: "Close / clear selection" },

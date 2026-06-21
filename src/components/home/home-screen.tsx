@@ -1,12 +1,12 @@
 "use client";
 
 import {
+  RiHeart3Fill,
   RiHome4Line,
   RiKeyboardLine,
   RiListUnordered,
   RiMap2Line,
   RiRefreshLine,
-  RiStarFill,
 } from "@remixicon/react";
 import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
@@ -50,10 +50,20 @@ const LEGEND: Array<{ tone: Tone; label: string }> = [
   { tone: "caution", label: "Caution" },
 ];
 
+// Stable empty reference so a not-yet-loaded by-id query doesn't churn the map.
+const NO_CARDS: ClusterCard[] = [];
+
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
   return response.json() as Promise<T>;
+}
+
+/** `/api/clusters?id=…` — fetch a set of clusters by id, ignoring the filters. */
+function byIdUrl(ids: number[]): string {
+  const params = new URLSearchParams();
+  for (const id of ids) params.append("id", String(id));
+  return `/api/clusters?${params.toString()}`;
 }
 
 export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
@@ -68,7 +78,14 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
   const isDesktop = useIsDesktop();
 
-  const { shortlisted, hidden } = useTriage();
+  const { liked, hidden } = useTriage();
+  // Counts come straight from the triage store, so they reflect the whole
+  // collection regardless of what the filter bar currently matches.
+  const likedCount = liked.size;
+  const hiddenCount = hidden.size;
+
+  const likedIds = useMemo(() => [...liked].sort((a, b) => a - b), [liked]);
+  const hiddenIds = useMemo(() => [...hidden].sort((a, b) => a - b), [hidden]);
 
   const selectAndScroll = useCallback((id: number) => {
     setSelectedId(id);
@@ -102,26 +119,60 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     select: (data) => data.clusters,
   });
 
+  // The liked + seen collections are fetched by id, so they survive any filter.
+  const likedQuery = useQuery({
+    queryKey: ["clusters", "by-id", likedIds.join(",")],
+    queryFn: () => fetchJson<{ clusters: ClusterCard[] }>(byIdUrl(likedIds)),
+    select: (data) => data.clusters,
+    enabled: view === "liked" && likedIds.length > 0,
+  });
+
+  const seenQuery = useQuery({
+    queryKey: ["clusters", "by-id", hiddenIds.join(",")],
+    queryFn: () => fetchJson<{ clusters: ClusterCard[] }>(byIdUrl(hiddenIds)),
+    select: (data) => data.clusters,
+    enabled: view === "hidden" && hiddenIds.length > 0,
+  });
+
   const anchor = config.data?.anchor ?? null;
-  const cards = clusters.data ?? [];
+  const cards = clusters.data ?? NO_CARDS;
 
-  const shortlistCount = cards.filter((card) =>
-    shortlisted.has(card.clusterId),
-  ).length;
-  const hiddenCount = cards.filter((card) => hidden.has(card.clusterId)).length;
-
-  // Memoized so its identity is stable across re-renders — the map keys marker
-  // rebuilds and pans off this array, and a fresh array each render made the
-  // map re-fit + re-fly on every click (the "jumps two or three times" bug).
-  const visible = useMemo(
+  // The live feed excludes everything already triaged — liked and seen each
+  // get their own tab.
+  const feedCards = useMemo(
     () =>
-      cards.filter((card) => {
-        if (view === "shortlist") return shortlisted.has(card.clusterId);
-        if (view === "hidden") return hidden.has(card.clusterId);
-        return !hidden.has(card.clusterId);
-      }),
-    [cards, view, shortlisted, hidden],
+      cards.filter(
+        (card) => !liked.has(card.clusterId) && !hidden.has(card.clusterId),
+      ),
+    [cards, liked, hidden],
   );
+  // Re-filter the by-id results through the live sets so an optimistic
+  // un-like / restore drops a card immediately, before the refetch lands.
+  const likedCards = useMemo(
+    () =>
+      (likedQuery.data ?? NO_CARDS).filter((card) => liked.has(card.clusterId)),
+    [likedQuery.data, liked],
+  );
+  const seenCards = useMemo(
+    () =>
+      (seenQuery.data ?? NO_CARDS).filter((card) => hidden.has(card.clusterId)),
+    [seenQuery.data, hidden],
+  );
+
+  const visible =
+    view === "liked" ? likedCards : view === "hidden" ? seenCards : feedCards;
+  const listLoading =
+    view === "liked"
+      ? likedQuery.isLoading
+      : view === "hidden"
+        ? seenQuery.isLoading
+        : clusters.isLoading;
+  const listError =
+    view === "liked"
+      ? likedQuery.isError
+      : view === "hidden"
+        ? seenQuery.isError
+        : clusters.isError;
 
   const deals = visible.filter((card) => card.isGoodDeal).length;
   const cautions = visible.filter(
@@ -134,7 +185,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     selectedId,
     onSelect: selectAndScroll,
     onOpenDetail: handleToggleExpand,
-    onShortlist: (id) => triageStore.toggleShortlist(id),
+    onLike: (id) => triageStore.toggleLike(id),
     onHide: (id) => triageStore.hide(id),
     onRefresh: () => clusters.refetch(),
     onClear: () => {
@@ -166,12 +217,12 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
             All
           </ToggleGroupItem>
           <ToggleGroupItem
-            value="shortlist"
+            value="liked"
             className="h-8 gap-1 text-xs"
-            disabled={shortlistCount === 0}
+            disabled={likedCount === 0}
           >
-            <RiStarFill className="size-3.5 text-amber-500" />
-            {shortlistCount}
+            <RiHeart3Fill className="size-3.5 text-rose-500" />
+            {likedCount}
           </ToggleGroupItem>
           <ToggleGroupItem
             value="hidden"
@@ -194,11 +245,11 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3 max-lg:pb-20">
-        {clusters.isLoading ? (
+        {listLoading ? (
           Array.from({ length: 6 }, (_, index) => (
             <Skeleton key={`skeleton-${index}`} className="h-40 w-full" />
           ))
-        ) : clusters.isError ? (
+        ) : listError ? (
           <p className="p-4 text-sm text-destructive">
             Couldn't load listings. Is the worker pipeline run and the DB up?
           </p>
@@ -211,12 +262,12 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
               card={card}
               anchorLabel={anchor?.label ?? null}
               isSelected={card.clusterId === selectedId}
-              isShortlisted={shortlisted.has(card.clusterId)}
+              isLiked={liked.has(card.clusterId)}
               isHidden={hidden.has(card.clusterId)}
               isExpanded={card.clusterId === expandedId}
               onSelect={selectAndScroll}
               onToggleExpand={handleToggleExpand}
-              onToggleShortlist={(id) => triageStore.toggleShortlist(id)}
+              onToggleLike={(id) => triageStore.toggleLike(id)}
               onToggleHide={handleToggleHide}
               onHover={setHoveredId}
             />
@@ -232,7 +283,6 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
         clusters={visible}
         selectedId={selectedId}
         hoveredId={hoveredId}
-        shortlisted={shortlisted}
         onSelect={selectAndScroll}
         anchor={anchor}
       />
@@ -261,7 +311,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
         </div>
         <div className="flex flex-wrap items-center gap-1.5 text-sm">
           <span className="font-mono text-muted-foreground">
-            {clusters.isLoading ? "loading…" : `${visible.length} listings`}
+            {listLoading ? "loading…" : `${visible.length} listings`}
           </span>
           {deals > 0 && (
             <span className="rounded-full bg-green-600/10 px-2 py-0.5 font-mono text-xs font-medium text-green-700 dark:text-green-400">
@@ -387,13 +437,24 @@ function EmptyState({
   view: TriageView;
   hasCards: boolean;
 }) {
-  if (view === "shortlist") {
+  if (view === "liked") {
     return (
       <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
-        <RiStarFill className="size-6 text-amber-500" />
+        <RiHeart3Fill className="size-6 text-rose-500" />
         <p className="text-sm">
-          No shortlisted listings yet. Hit <kbd>s</kbd> on a listing — or the
-          star — to keep it here.
+          Nothing liked yet. Hit <kbd>s</kbd> on a listing — or the heart — to
+          keep it here.
+        </p>
+      </div>
+    );
+  }
+  if (view === "hidden") {
+    return (
+      <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
+        <RiHome4Line className="size-6" />
+        <p className="text-sm">
+          Nothing marked seen yet. Press <kbd>x</kbd> on a listing to dismiss
+          it.
         </p>
       </div>
     );
@@ -403,7 +464,7 @@ function EmptyState({
       <RiHome4Line className="size-6" />
       <p className="text-sm">
         {hasCards
-          ? "Everything here is hidden. Switch to All to bring listings back."
+          ? "Everything here is triaged. Check Liked or Seen, or loosen the filters."
           : "No listings match. Loosen the filters, or run "}
         {!hasCards && (
           <code className="rounded bg-muted px-1">npm run pipeline</code>

@@ -7,7 +7,7 @@ type NavHandlers = {
   selectedId: number | null;
   onSelect: (id: number) => void;
   onOpenDetail: (id: number) => void;
-  onShortlist: (id: number) => void;
+  onLike: (id: number) => void;
   onHide: (id: number) => void;
   onRefresh: () => void;
   onClear: () => void;
@@ -76,15 +76,14 @@ export function useKeyboardNav(handlers: NavHandlers) {
           if (selectedId != null) handler.onOpenDetail(selectedId);
           return;
         }
-        case "s": {
-          if (selectedId != null) handler.onShortlist(selectedId);
-          return;
-        }
+        case "s":
         case "x": {
           if (selectedId == null) return;
-          // Step selection to the next card before it leaves the feed.
+          // Both liking and hiding pull the card out of the feed, so step the
+          // selection to the next card before it leaves.
           const next = ids[index + 1] ?? ids[index - 1] ?? null;
-          handler.onHide(selectedId);
+          if (event.key === "s") handler.onLike(selectedId);
+          else handler.onHide(selectedId);
           if (next != null) handler.onSelect(next);
           else handler.onClear();
           return;

@@ -21,14 +21,12 @@ export function ListingMap({
   clusters,
   selectedId,
   hoveredId,
-  shortlisted,
   onSelect,
   anchor,
 }: {
   clusters: ClusterCard[];
   selectedId: number | null;
   hoveredId: number | null;
-  shortlisted: ReadonlySet<number>;
   onSelect: (id: number) => void;
   anchor: AppConfig["anchor"];
 }) {
@@ -48,8 +46,8 @@ export function ListingMap({
   const [unavailable, setUnavailable] = useState(false);
 
   // Rebuild markers only when the visible set actually changes — its ids,
-  // positions, and tones. Toggling a shortlist star recomputes the parent's
-  // array but leaves this signature identical, so the map stays put.
+  // positions, and tones. Toggling triage recomputes the parent's array but
+  // leaves this signature identical, so the map stays put.
   const markerSignature = clusters
     .map(
       (card) => `${card.clusterId}@${card.lng},${card.lat}:${markerTone(card)}`,
@@ -138,10 +136,10 @@ export function ListingMap({
     if (any) map.fitBounds(bounds, { padding: 56, maxZoom: 13, duration: 0 });
   }, [markerSignature, anchor]);
 
-  // Style markers for selection (purple outline), hover (faint outline), and
-  // shortlist (amber ring) — without rebuilding them. `clusters` is a real
-  // dependency: the rebuild effect recreates the marker DOM on a data change,
-  // so styling must re-run afterward to survive a refetch/filter.
+  // Style markers for selection (purple outline) and hover (faint outline) —
+  // without rebuilding them. `clusters` is a real dependency: the rebuild effect
+  // recreates the marker DOM on a data change, so styling must re-run afterward
+  // to survive a refetch/filter.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-apply after marker rebuild
   useEffect(() => {
     if (!mapRef.current) return;
@@ -150,9 +148,6 @@ export function ListingMap({
       const element = marker.getElement();
       const isSelected = id === selectedId;
       const isHovered = id === hoveredId;
-      element.style.boxShadow = shortlisted.has(id)
-        ? "0 0 0 2px #f59e0b, 0 1px 3px rgba(0,0,0,.4)"
-        : "0 1px 3px rgba(0,0,0,.4)";
       element.style.outline = isSelected
         ? "3px solid #7c3aed"
         : isHovered
@@ -160,7 +155,7 @@ export function ListingMap({
           : "";
       element.style.zIndex = isSelected ? "10" : isHovered ? "5" : "";
     }
-  }, [selectedId, hoveredId, shortlisted, clusters]);
+  }, [selectedId, hoveredId, clusters]);
 
   // Pan to the selected cluster — a single, gentle move. Detail lives in the
   // right-side sheet, so the map only highlights + recenters, never popups.
