@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
     nearTrain: params.get("nearTrain") === "1",
     maxPragueKm: number("maxPrague"),
     kind: params.get("kind") ?? undefined,
+    addedAfter: number("addedAfter"),
     sort: sort && SORTS.has(sort) ? (sort as SortKey) : "newest",
   };
 

@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 
 import { AuthMenu } from "./auth-menu";
 import { ClusterCard as Card } from "./cluster-card";
+import { FeedSeenSync } from "./feed-seen-sync";
 import { FilterBar } from "./filter-bar";
 import { ShortcutsDialog } from "./shortcuts-dialog";
 import { TriageSync } from "./triage-sync";
@@ -134,10 +135,23 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     staleTime: 5 * 60_000,
   });
 
+  // The "New since last visit" toggle is a URL boolean; the catch-up mark it
+  // filters by lives client-side, so we resolve it into a concrete addedAfter
+  // timestamp here (live, so the feed tracks a catch-up). Folded into the query
+  // key too, so advancing the mark refetches.
+  const effectiveQuery = useMemo(() => {
+    const params = new URLSearchParams(query);
+    if (params.get("sinceVisit") === "1") {
+      params.delete("sinceVisit");
+      if (seenThrough != null) params.set("addedAfter", String(seenThrough));
+    }
+    return params.toString();
+  }, [query, seenThrough]);
+
   const clusters = useQuery({
-    queryKey: ["clusters", query],
+    queryKey: ["clusters", effectiveQuery],
     queryFn: () =>
-      fetchJson<{ clusters: ClusterCard[] }>(`/api/clusters?${query}`),
+      fetchJson<{ clusters: ClusterCard[] }>(`/api/clusters?${effectiveQuery}`),
     select: (data) => data.clusters,
   });
 
@@ -330,6 +344,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   return (
     <div className="flex h-screen flex-col">
       {authEnabled && <TriageSync />}
+      {authEnabled && <FeedSeenSync />}
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 py-2">
         <div className="flex items-center gap-2">
           <RiHome4Line className="size-5 text-primary" />

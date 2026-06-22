@@ -161,6 +161,9 @@ export const user = pgTable("user", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+  // "Feed caught up through" high-water mark — see /api/feed-seen. Null until
+  // the user first catches up on a signed-in device.
+  feedSeenAt: timestamp("feed_seen_at", { withTimezone: true }),
 });
 
 export const session = pgTable("session", {

@@ -135,6 +135,11 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
       active: params.get("nearTrain") === "1",
     },
     { key: "fresh", label: "New", active: params.get("fresh") === "1" },
+    {
+      key: "sinceVisit",
+      label: "New since last visit",
+      active: params.get("sinceVisit") === "1",
+    },
   ];
   const show = (key: string) =>
     !hidden.has(key) || (HIDEABLE.find((f) => f.key === key)?.active ?? false);
@@ -324,6 +329,17 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
             }
           />
           New {config ? `(${config.feedWindowHours}h)` : ""}
+        </Label>
+      )}
+      {show("sinceVisit") && (
+        <Label className="flex items-center gap-1.5 text-sm font-normal">
+          <Switch
+            checked={params.get("sinceVisit") === "1"}
+            onCheckedChange={(checked) =>
+              setParam("sinceVisit", checked ? "1" : null)
+            }
+          />
+          Since last visit
         </Label>
       )}
 
