@@ -20,9 +20,11 @@ import { useSyncExternalStore } from "react";
  * the wire types below keep that name while the in-memory state uses `liked`.
  */
 
-// The feed column's tabs: the live feed, the liked collection, and the seen
-// collection. Liked and seen are fetched by id, so they ignore the filter bar.
-export type TriageView = "all" | "liked" | "hidden";
+// The feed column's tabs: the live feed, the liked collection, the seen
+// collection, and a session-only "unliked" recovery list. Liked is fetched by
+// id so it ignores the filter bar; all + seen respect it; unliked is captured
+// client-side (this session only).
+export type TriageView = "all" | "liked" | "hidden" | "unliked";
 
 // The DB-side names ("seen" === the "hidden" set, "shortlist" === "liked").
 export type TriageStateName = "seen" | "shortlist";

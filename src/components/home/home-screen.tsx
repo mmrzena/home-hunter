@@ -95,6 +95,12 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const [view, setView] = useState<TriageView>("all");
+  // Houses you've un-liked this session — a filter-agnostic safety net so an
+  // off-filter house you remove from Liked doesn't vanish without a trace.
+  // Session-only: cleared on reload, when the house is simply untriaged again.
+  const [unlikedCards, setUnlikedCards] = useState<Map<number, ClusterCard>>(
+    () => new Map(),
+  );
   const [helpOpen, setHelpOpen] = useState(false);
   // Mobile shows one pane at a time (toggled below); desktop shows both split.
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
@@ -102,13 +108,12 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
 
   const { liked, hidden } = useTriage();
   const seenThrough = useFeedSeen();
-  // Counts come straight from the triage store, so they reflect the whole
-  // collection regardless of what the filter bar currently matches.
+  // Liked is the one filter-agnostic collection (always visible), so its count
+  // is the whole set. Seen now respects the filter, so its count is derived
+  // from the filtered feed below.
   const likedCount = liked.size;
-  const hiddenCount = hidden.size;
 
   const likedIds = useMemo(() => [...liked].sort((a, b) => a - b), [liked]);
-  const hiddenIds = useMemo(() => [...hidden].sort((a, b) => a - b), [hidden]);
 
   const selectAndScroll = useCallback((id: number) => {
     setSelectedId(id);
@@ -155,23 +160,15 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     select: (data) => data.clusters,
   });
 
-  // The liked + seen collections are fetched by id, so they survive any filter.
-  // keepPreviousData holds the current list on screen while the id set changes
-  // (e.g. after a like/restore), so toggling one card never flashes skeletons —
-  // the optimistic `byRecency` filter drops the affected card immediately.
+  // Liked is filter-agnostic, so it's fetched by id (survives any filter).
+  // keepPreviousData holds the list on screen while the id set changes (e.g.
+  // after a like/restore), so toggling one card never flashes skeletons — the
+  // optimistic `byRecency` filter drops the affected card immediately.
   const likedQuery = useQuery({
     queryKey: ["clusters", "by-id", likedIds.join(",")],
     queryFn: () => fetchJson<{ clusters: ClusterCard[] }>(byIdUrl(likedIds)),
     select: (data) => data.clusters,
     enabled: view === "liked" && likedIds.length > 0,
-    placeholderData: keepPreviousData,
-  });
-
-  const seenQuery = useQuery({
-    queryKey: ["clusters", "by-id", hiddenIds.join(",")],
-    queryFn: () => fetchJson<{ clusters: ClusterCard[] }>(byIdUrl(hiddenIds)),
-    select: (data) => data.clusters,
-    enabled: view === "hidden" && hiddenIds.length > 0,
     placeholderData: keepPreviousData,
   });
 
@@ -188,28 +185,58 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       ),
     [cards, liked, hidden],
   );
-  // Order each collection newest-added-first (and re-filter through the live
-  // set so an optimistic un-like / restore drops a card before the refetch).
+  // Liked: newest-liked-first, re-filtered through the live set so an optimistic
+  // un-like drops a card before the refetch. Seen: the filtered feed intersected
+  // with the hidden set (newest-hidden-first) — it respects the filter bar now.
   const likedCards = useMemo(
     () => byRecency(likedQuery.data ?? NO_CARDS, liked),
     [likedQuery.data, liked],
   );
-  const seenCards = useMemo(
-    () => byRecency(seenQuery.data ?? NO_CARDS, hidden),
-    [seenQuery.data, hidden],
-  );
+  const seenCards = useMemo(() => byRecency(cards, hidden), [cards, hidden]);
 
-  // One source of truth for the active tab — query status and card list both
-  // derive from it, so the three branches never drift apart.
-  const activeQuery =
-    view === "liked" ? likedQuery : view === "hidden" ? seenQuery : clusters;
+  // A by-id pool for looking up a card when you un-like it (it may be off-filter
+  // and so absent from the feed query). Liked cards live in likedQuery, feed
+  // cards in `cards`; one of those holds any card whose heart you can click.
+  const cardsById = useMemo(() => {
+    const map = new Map<number, ClusterCard>();
+    for (const card of cards) map.set(card.clusterId, card);
+    for (const card of likedQuery.data ?? NO_CARDS)
+      map.set(card.clusterId, card);
+    return map;
+  }, [cards, likedQuery.data]);
+
+  // This session's un-likes, newest first, minus any since re-liked or marked
+  // seen. Filter-agnostic by construction — the cards are captured, not queried.
+  const unlikedList = useMemo(() => {
+    const result: ClusterCard[] = [];
+    for (const card of unlikedCards.values()) {
+      if (!liked.has(card.clusterId) && !hidden.has(card.clusterId))
+        result.push(card);
+    }
+    return result.reverse();
+  }, [unlikedCards, liked, hidden]);
+
+  // The Unliked tab vanishes when its list empties; coerce a stale selection
+  // back to All so the toggle never points at a missing tab (no effect needed).
+  const unlikedCount = unlikedList.length;
+  const effectiveView = view === "unliked" && unlikedCount === 0 ? "all" : view;
+
+  // Liked is the only by-id query; All / Seen / Unliked all read the feed query.
+  const activeQuery = effectiveView === "liked" ? likedQuery : clusters;
   const visible =
-    view === "liked" ? likedCards : view === "hidden" ? seenCards : feedCards;
+    effectiveView === "liked"
+      ? likedCards
+      : effectiveView === "hidden"
+        ? seenCards
+        : effectiveView === "unliked"
+          ? unlikedList
+          : feedCards;
 
-  // The All tab's own count, and the catalog total shown in the header. The
-  // total is the sum of the three tabs, so it stays put as you switch between
-  // them (liked/seen are whole-collection counts; all is the filtered feed).
+  // The All + Seen tab counts (filter-scoped) and the header total. The total is
+  // the sum of the three persistent tabs, so it stays put as you switch them
+  // (liked is the whole collection; all + seen are the filtered feed).
   const allCount = feedCards.length;
+  const hiddenCount = seenCards.length;
   const totalCount = allCount + likedCount + hiddenCount;
 
   // Untriaged arrivals since you last caught up — the reason to come back. A
@@ -222,12 +249,32 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
           (card) => new Date(card.firstSeenAt).getTime() > seenThrough,
         ).length;
 
+  // Toggle like, capturing the card into the session Unliked set on remove
+  // (and dropping it on re-like) so an off-filter house stays recoverable.
+  const handleToggleLike = useCallback(
+    (id: number) => {
+      const wasLiked = liked.has(id);
+      triageStore.toggleLike(id);
+      setUnlikedCards((prev) => {
+        const next = new Map(prev);
+        if (wasLiked) {
+          const card = cardsById.get(id);
+          if (card) next.set(id, card);
+        } else {
+          next.delete(id);
+        }
+        return next;
+      });
+    },
+    [liked, cardsById],
+  );
+
   useKeyboardNav({
     ids: visible.map((card) => card.clusterId),
     selectedId,
     onSelect: selectAndScroll,
     onOpenDetail: handleToggleExpand,
-    onLike: (id) => triageStore.toggleLike(id),
+    onLike: handleToggleLike,
     onHide: (id) => triageStore.hide(id),
     onRefresh: () => clusters.refetch(),
     onClear: () => {
@@ -252,7 +299,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
           type="single"
           variant="outline"
           size="sm"
-          value={view}
+          value={effectiveView}
           onValueChange={(next) => next && setView(next as TriageView)}
         >
           <ToggleGroupItem value="all" className="h-8 text-xs">
@@ -273,8 +320,13 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
           >
             Seen {hiddenCount > 0 ? hiddenCount : ""}
           </ToggleGroupItem>
+          {unlikedCount > 0 && (
+            <ToggleGroupItem value="unliked" className="h-8 text-xs">
+              Unliked {unlikedCount}
+            </ToggleGroupItem>
+          )}
         </ToggleGroup>
-        {view === "hidden" && hiddenCount > 0 && (
+        {effectiveView === "hidden" && hiddenCount > 0 && (
           <Button
             variant="ghost"
             size="sm"
@@ -296,7 +348,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
             Couldn't load listings. Is the worker pipeline run and the DB up?
           </p>
         ) : visible.length === 0 ? (
-          <EmptyState view={view} hasCards={cards.length > 0} />
+          <EmptyState view={effectiveView} hasCards={cards.length > 0} />
         ) : (
           visible.map((card) => (
             <Card
@@ -309,7 +361,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
               isExpanded={card.clusterId === expandedId}
               onSelect={selectAndScroll}
               onToggleExpand={handleToggleExpand}
-              onToggleLike={(id) => triageStore.toggleLike(id)}
+              onToggleLike={handleToggleLike}
               onToggleHide={handleToggleHide}
               onHover={setHoveredId}
             />
