@@ -1,6 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { type ClusterFilters, getClusters } from "@/lib/clusters";
+import {
+  type ClusterFilters,
+  getClusters,
+  getClustersByIds,
+} from "@/lib/clusters";
 import type { SortKey } from "@/lib/types";
 
 const VERDICTS = new Set(["deal", "fair", "overpriced"]);
@@ -16,6 +20,18 @@ const SORTS = new Set([
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
+
+  // `?id=…&id=…` fetches those clusters by id, bypassing every filter — the
+  // liked and seen collections live there regardless of the active filter bar.
+  const ids = params
+    .getAll("id")
+    .map(Number)
+    .filter((id) => Number.isFinite(id));
+  if (ids.length) {
+    const clusters = await getClustersByIds(ids);
+    return NextResponse.json({ clusters });
+  }
+
   const number = (key: string) => {
     const value = params.get(key);
     return value && Number.isFinite(Number(value)) ? Number(value) : undefined;

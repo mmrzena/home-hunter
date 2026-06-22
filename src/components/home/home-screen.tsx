@@ -8,7 +8,7 @@ import {
   RiMap2Line,
   RiRefreshLine,
 } from "@remixicon/react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/resizable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { markFeedSeen, sinceLabel, useFeedSeen } from "@/lib/feed-seen";
 import { TONE_DOT, type Tone } from "@/lib/listing-status";
 import { type TriageView, triageStore, useTriage } from "@/lib/triage-store";
 import type { AppConfig, ClusterCard } from "@/lib/types";
@@ -59,6 +60,13 @@ async function fetchJson<T>(url: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+/** `/api/clusters?id=…` — fetch a set of clusters by id, ignoring the filters. */
+function byIdUrl(ids: number[]): string {
+  const params = new URLSearchParams();
+  for (const id of ids) params.append("id", String(id));
+  return `/api/clusters?${params.toString()}`;
+}
+
 /**
  * Order cards newest-added-first. A card's rank is its position in the triage
  * set's insertion order (JS Sets preserve it — newest additions land last),
@@ -92,6 +100,14 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   const isDesktop = useIsDesktop();
 
   const { liked, hidden } = useTriage();
+  const seenThrough = useFeedSeen();
+  // Counts come straight from the triage store, so they reflect the whole
+  // collection regardless of what the filter bar currently matches.
+  const likedCount = liked.size;
+  const hiddenCount = hidden.size;
+
+  const likedIds = useMemo(() => [...liked].sort((a, b) => a - b), [liked]);
+  const hiddenIds = useMemo(() => [...hidden].sort((a, b) => a - b), [hidden]);
 
   const selectAndScroll = useCallback((id: number) => {
     setSelectedId(id);
@@ -125,12 +141,32 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     select: (data) => data.clusters,
   });
 
+  // The liked + seen collections are fetched by id, so they survive any filter.
+  // keepPreviousData holds the current list on screen while the id set changes
+  // (e.g. after a like/restore), so toggling one card never flashes skeletons —
+  // the optimistic `byRecency` filter drops the affected card immediately.
+  const likedQuery = useQuery({
+    queryKey: ["clusters", "by-id", likedIds.join(",")],
+    queryFn: () => fetchJson<{ clusters: ClusterCard[] }>(byIdUrl(likedIds)),
+    select: (data) => data.clusters,
+    enabled: view === "liked" && likedIds.length > 0,
+    placeholderData: keepPreviousData,
+  });
+
+  const seenQuery = useQuery({
+    queryKey: ["clusters", "by-id", hiddenIds.join(",")],
+    queryFn: () => fetchJson<{ clusters: ClusterCard[] }>(byIdUrl(hiddenIds)),
+    select: (data) => data.clusters,
+    enabled: view === "hidden" && hiddenIds.length > 0,
+    placeholderData: keepPreviousData,
+  });
+
   const anchor = config.data?.anchor ?? null;
   const cards = clusters.data ?? NO_CARDS;
 
-  // All three tabs partition the one filtered feed, so they all respect the
-  // filter bar. The triaged tabs are ordered newest-added-first; `byRecency`
-  // also drops anything no longer in its set (optimistic un-like / restore).
+  // The All feed respects the filter bar: the filtered server feed minus
+  // anything triaged. Un-liking returns a house to the pool — it reappears here
+  // only if it still matches the filter, otherwise it simply drops out of view.
   const feedCards = useMemo(
     () =>
       cards.filter(
@@ -138,21 +174,39 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       ),
     [cards, liked, hidden],
   );
-  const likedCards = useMemo(() => byRecency(cards, liked), [cards, liked]);
-  const seenCards = useMemo(() => byRecency(cards, hidden), [cards, hidden]);
+  // Order each collection newest-added-first (and re-filter through the live
+  // set so an optimistic un-like / restore drops a card before the refetch).
+  const likedCards = useMemo(
+    () => byRecency(likedQuery.data ?? NO_CARDS, liked),
+    [likedQuery.data, liked],
+  );
+  const seenCards = useMemo(
+    () => byRecency(seenQuery.data ?? NO_CARDS, hidden),
+    [seenQuery.data, hidden],
+  );
 
-  // Counts (and so the tab badges) reflect what's listed under the active filter.
-  const likedCount = likedCards.length;
-  const hiddenCount = seenCards.length;
-
+  // One source of truth for the active tab — query status and card list both
+  // derive from it, so the three branches never drift apart.
+  const activeQuery =
+    view === "liked" ? likedQuery : view === "hidden" ? seenQuery : clusters;
   const visible =
     view === "liked" ? likedCards : view === "hidden" ? seenCards : feedCards;
 
-  const deals = visible.filter((card) => card.isGoodDeal).length;
-  const cautions = visible.filter(
-    (card) => card.scamScore != null && card.scamScore >= 30,
-  ).length;
-  const fresh = visible.filter((card) => card.isNew).length;
+  // The All tab's own count, and the catalog total shown in the header. The
+  // total is the sum of the three tabs, so it stays put as you switch between
+  // them (liked/seen are whole-collection counts; all is the filtered feed).
+  const allCount = feedCards.length;
+  const totalCount = allCount + likedCount + hiddenCount;
+
+  // Untriaged arrivals since you last caught up — the reason to come back. A
+  // null mark (pre-hydration / SSR) means nothing is "new" yet, so the badge
+  // hides until the client knows the real high-water mark.
+  const newCount =
+    seenThrough == null
+      ? 0
+      : feedCards.filter(
+          (card) => new Date(card.firstSeenAt).getTime() > seenThrough,
+        ).length;
 
   useKeyboardNav({
     ids: visible.map((card) => card.clusterId),
@@ -188,7 +242,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
           onValueChange={(next) => next && setView(next as TriageView)}
         >
           <ToggleGroupItem value="all" className="h-8 text-xs">
-            All
+            All {allCount}
           </ToggleGroupItem>
           <ToggleGroupItem
             value="liked"
@@ -219,21 +273,16 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3 max-lg:pb-20">
-        {clusters.isLoading ? (
+        {activeQuery.isLoading ? (
           Array.from({ length: 6 }, (_, index) => (
             <Skeleton key={`skeleton-${index}`} className="h-40 w-full" />
           ))
-        ) : clusters.isError ? (
+        ) : activeQuery.isError ? (
           <p className="p-4 text-sm text-destructive">
             Couldn't load listings. Is the worker pipeline run and the DB up?
           </p>
         ) : visible.length === 0 ? (
-          <EmptyState
-            view={view}
-            hasCards={cards.length > 0}
-            likedTotal={liked.size}
-            hiddenTotal={hidden.size}
-          />
+          <EmptyState view={view} hasCards={cards.length > 0} />
         ) : (
           visible.map((card) => (
             <Card
@@ -290,22 +339,17 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
         </div>
         <div className="flex flex-wrap items-center gap-1.5 text-sm">
           <span className="font-mono text-muted-foreground">
-            {clusters.isLoading ? "loading…" : `${visible.length} listings`}
+            {clusters.isLoading ? "loading…" : `${totalCount} listings`}
           </span>
-          {deals > 0 && (
-            <span className="rounded-full bg-green-600/10 px-2 py-0.5 font-mono text-xs font-medium text-green-700 dark:text-green-400">
-              {deals} deals
-            </span>
-          )}
-          {fresh > 0 && (
-            <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-xs font-medium text-muted-foreground">
-              {fresh} new
-            </span>
-          )}
-          {cautions > 0 && (
-            <span className="rounded-full bg-red-600/10 px-2 py-0.5 font-mono text-xs font-medium text-red-700 dark:text-red-400">
-              {cautions} caution
-            </span>
+          {newCount > 0 && seenThrough != null && (
+            <button
+              type="button"
+              onClick={() => markFeedSeen()}
+              title="Mark these as seen"
+              className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+            >
+              {newCount} new since {sinceLabel(seenThrough)}
+            </button>
           )}
         </div>
         <div className="ml-auto flex items-center gap-1">
@@ -412,27 +456,17 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
 function EmptyState({
   view,
   hasCards,
-  likedTotal,
-  hiddenTotal,
 }: {
   view: TriageView;
   hasCards: boolean;
-  likedTotal: number;
-  hiddenTotal: number;
 }) {
   if (view === "liked") {
     return (
       <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
         <RiHeart3Fill className="size-6 text-rose-500" />
         <p className="text-sm">
-          {likedTotal > 0 ? (
-            "None of your liked houses match the current filters."
-          ) : (
-            <>
-              Nothing liked yet. Hit <kbd>s</kbd> on a listing — or the heart —
-              to keep it here.
-            </>
-          )}
+          Nothing liked yet. Hit <kbd>s</kbd> on a listing — or the heart — to
+          keep it here.
         </p>
       </div>
     );
@@ -442,14 +476,8 @@ function EmptyState({
       <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
         <RiHome4Line className="size-6" />
         <p className="text-sm">
-          {hiddenTotal > 0 ? (
-            "None of your seen houses match the current filters."
-          ) : (
-            <>
-              Nothing marked seen yet. Press <kbd>x</kbd> on a listing to
-              dismiss it.
-            </>
-          )}
+          Nothing marked seen yet. Press <kbd>x</kbd> on a listing to dismiss
+          it.
         </p>
       </div>
     );
