@@ -1,8 +1,22 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { setTimeout as sleep } from "node:timers/promises";
 
 // A realistic browser UA + a polite identifier. We hit undocumented public
 // endpoints for single-user personal research: low concurrency, a request
 // delay, and aggressive caching upstream keep this in the gray-area-but-OK lane.
+const BATCH_HTTP = new AsyncLocalStorage<AbortSignal>();
+
+export function withHttpBudget<T>(run: () => Promise<T>): Promise<T> {
+  return BATCH_HTTP.run(AbortSignal.timeout(180_000), run);
+}
+
+function requestSignal(): AbortSignal {
+  const budget = BATCH_HTTP.getStore();
+  return budget
+    ? AbortSignal.any([budget, AbortSignal.timeout(8_000)])
+    : AbortSignal.timeout(30_000);
+}
+
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36 home-hunter/0.1 (personal research)";
@@ -24,12 +38,14 @@ export async function getJson<T = unknown>(
   url: string,
   options: { retries?: number; headers?: Record<string, string> } = {},
 ): Promise<T> {
-  const { retries = 3, headers = {} } = options;
+  const { headers = {} } = options;
+  const retries = BATCH_HTTP.getStore() ? 1 : (options.retries ?? 3);
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
       const response = await fetch(url, {
+        signal: requestSignal(),
         headers: {
           "User-Agent": USER_AGENT,
           Accept: "application/json",
@@ -66,13 +82,15 @@ export async function postJson<T = unknown>(
   body: unknown,
   options: { retries?: number; headers?: Record<string, string> } = {},
 ): Promise<T> {
-  const { retries = 3, headers = {} } = options;
+  const { headers = {} } = options;
+  const retries = BATCH_HTTP.getStore() ? 1 : (options.retries ?? 3);
   const payload = JSON.stringify(body);
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
       const response = await fetch(url, {
+        signal: requestSignal(),
         method: "POST",
         headers: {
           "User-Agent": USER_AGENT,
@@ -110,12 +128,14 @@ export async function getText(
   url: string,
   options: { retries?: number; headers?: Record<string, string> } = {},
 ): Promise<string> {
-  const { retries = 3, headers = {} } = options;
+  const { headers = {} } = options;
+  const retries = BATCH_HTTP.getStore() ? 1 : (options.retries ?? 3);
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
       const response = await fetch(url, {
+        signal: requestSignal(),
         headers: {
           "User-Agent": USER_AGENT,
           Accept: "text/html",
@@ -146,6 +166,7 @@ export async function getText(
 export async function getImageBuffer(url: string): Promise<Buffer | null> {
   try {
     const response = await fetch(url, {
+      signal: requestSignal(),
       headers: { "User-Agent": USER_AGENT },
     });
     if (!response.ok) return null;

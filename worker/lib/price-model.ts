@@ -1,116 +1,150 @@
-/**
- * Robust price-distribution model over CZK per usable m². Real-estate prices are
- * fat-tailed, so buckets use rank/percentile rather than mean/stddev. Most
- * (area × size-band) buckets are thin, so a listing falls back to the most
- * specific bucket that still has enough samples — and is marked low-confidence
- * when it had to widen.
- */
+import { haversineKm } from "@/lib/stations";
+
 export const MIN_SAMPLES = 8;
 
 export type Sample = {
   id: number;
-  code: string | null; // cadastral/locality bucket
-  band: string | null; // usable-area size band
-  ppm2: number; // CZK per usable m²
+  clusterId?: number | null;
+  code: string | null;
+  band: string | null;
+  ppm2: number;
+  kind?: string | null;
+  usable?: number | null;
+  land?: number | null;
+  lat?: number | null;
+  lng?: number | null;
 };
 
 export type Verdict = "deal" | "fair" | "overpriced";
-
 export type ScoreResult = {
-  percentile: number; // 0..100 within the chosen bucket
+  percentile: number;
   sampleSize: number;
   confidence: "high" | "low";
   bucketKey: string;
   verdict: Verdict;
+  medianPpm2: number;
+  lowerPpm2: number;
+  upperPpm2: number;
+  comparableIds: number[];
 };
 
-const OVERPRICED_PCT = 80;
-const DEAL_PCT = 25;
+export function sizeBand(area: number | null | undefined): string | null {
+  if (!area || area <= 0) return null;
+  return area < 80
+    ? "<80"
+    : area < 120
+      ? "80-120"
+      : area < 200
+        ? "120-200"
+        : "200+";
+}
 
+/** Asking-price comparisons, never a sale-price appraisal. Each house votes once. */
 export class PriceModel {
-  private byCodeBand = new Map<string, number[]>();
-  private byCode = new Map<string, number[]>();
-  private byBand = new Map<string, number[]>();
-  private global: number[] = [];
+  private samples: Sample[];
 
   constructor(samples: Sample[]) {
-    for (const sample of samples) {
-      this.global.push(sample.ppm2);
-      if (sample.code && sample.band)
-        push(this.byCodeBand, `${sample.code}|${sample.band}`, sample.ppm2);
-      if (sample.code) push(this.byCode, sample.code, sample.ppm2);
-      if (sample.band) push(this.byBand, sample.band, sample.ppm2);
-    }
-    for (const values of this.byCodeBand.values()) values.sort(ascending);
-    for (const values of this.byCode.values()) values.sort(ascending);
-    for (const values of this.byBand.values()) values.sort(ascending);
-    this.global.sort(ascending);
+    this.samples = samples.filter(
+      (sample) => Number.isFinite(sample.ppm2) && sample.ppm2 > 0,
+    );
   }
 
-  /** Most specific bucket with ≥ MIN_SAMPLES; else widen, else global. */
-  score(sample: Sample): ScoreResult | null {
-    const candidates: Array<{
-      key: string;
-      values: number[];
-      confidence: "high" | "low";
-    }> = [];
-    if (sample.code && sample.band) {
-      const key = `${sample.code}|${sample.band}`;
-      candidates.push({
-        key,
-        values: this.byCodeBand.get(key) ?? [],
-        confidence: "high",
-      });
+  score(subject: Sample): ScoreResult | null {
+    if (!Number.isFinite(subject.ppm2) || subject.ppm2 <= 0) return null;
+    // Exclude the subject before deduplication, including its other adverts.
+    const eligible = this.samples.filter(
+      (peer) =>
+        peer.id !== subject.id &&
+        !(subject.clusterId != null && peer.clusterId === subject.clusterId) &&
+        (!subject.kind ||
+          subject.kind === "other" ||
+          peer.kind === subject.kind) &&
+        (subject.usable && peer.usable
+          ? peer.usable / subject.usable >= 0.67 &&
+            peer.usable / subject.usable <= 1.5
+          : subject.band != null && peer.band === subject.band) &&
+        !(
+          subject.land &&
+          peer.land &&
+          (peer.land / subject.land < 0.25 || peer.land / subject.land > 4)
+        ),
+    );
+    const groups = new Map<string, Sample[]>();
+    for (const peer of eligible) {
+      const key =
+        peer.clusterId == null
+          ? `listing:${peer.id}`
+          : `cluster:${peer.clusterId}`;
+      const group = groups.get(key) ?? [];
+      group.push(peer);
+      groups.set(key, group);
     }
-    if (sample.code)
+    // Median advert is deterministic and avoids preferring an agent's highest asking price.
+    const peers = [...groups.values()].map(
+      (group) =>
+        group.sort(
+          (left, right) => left.ppm2 - right.ppm2 || left.id - right.id,
+        )[Math.floor((group.length - 1) / 2)],
+    );
+    const candidates: { key: string; peers: Sample[] }[] = [];
+    if (subject.code)
       candidates.push({
-        key: sample.code,
-        values: this.byCode.get(sample.code) ?? [],
-        confidence: "low",
+        key: `locality:${subject.code}`,
+        peers: peers.filter((peer) => peer.code === subject.code),
       });
-    if (sample.band)
-      candidates.push({
-        key: `band:${sample.band}`,
-        values: this.byBand.get(sample.band) ?? [],
-        confidence: "low",
-      });
-    candidates.push({ key: "all", values: this.global, confidence: "low" });
-
-    const chosen =
-      candidates.find((candidate) => candidate.values.length >= MIN_SAMPLES) ??
-      candidates[candidates.length - 1];
-    if (chosen.values.length < 2) return null;
-
-    const percentile = percentileRank(chosen.values, sample.ppm2);
-    const verdict: Verdict =
-      percentile >= OVERPRICED_PCT
-        ? "overpriced"
-        : percentile <= DEAL_PCT
-          ? "deal"
-          : "fair";
-
+    if (subject.lat != null && subject.lng != null) {
+      const lat = subject.lat;
+      const lng = subject.lng;
+      for (const radius of [5, 15, 30]) {
+        candidates.push({
+          key: `radius:${radius}km`,
+          peers: peers.filter(
+            (peer) =>
+              peer.lat != null &&
+              peer.lng != null &&
+              haversineKm(lat, lng, peer.lat, peer.lng) <= radius,
+          ),
+        });
+      }
+    }
+    // No country-wide fallback: remote markets can make a local house look falsely cheap.
+    const chosen = candidates.find(
+      (candidate) => candidate.peers.length >= MIN_SAMPLES,
+    );
+    if (!chosen) return null;
+    const sorted = chosen.peers
+      .map((peer) => peer.ppm2)
+      .sort((left, right) => left - right);
+    const percentile = percentileRank(sorted, subject.ppm2);
+    const lowerPpm2 = quantile(sorted, 0.25);
+    const medianPpm2 = quantile(sorted, 0.5);
+    const upperPpm2 = quantile(sorted, 0.75);
     return {
       percentile,
-      sampleSize: chosen.values.length,
-      confidence: chosen.confidence,
+      sampleSize: sorted.length,
+      confidence:
+        sorted.length >= 20 &&
+        chosen.key !== "radius:30km" &&
+        subject.kind &&
+        subject.kind !== "other" &&
+        subject.land &&
+        chosen.peers.every((peer) => Boolean(peer.land)) &&
+        (upperPpm2 - lowerPpm2) / medianPpm2 <= 0.5
+          ? "high"
+          : "low",
       bucketKey: chosen.key,
-      verdict,
+      verdict:
+        percentile >= 80 ? "overpriced" : percentile <= 25 ? "deal" : "fair",
+      lowerPpm2,
+      medianPpm2,
+      upperPpm2,
+      comparableIds: chosen.peers.map((peer) => peer.id),
     };
   }
 }
 
-function push(map: Map<string, number[]>, key: string, value: number) {
-  const values = map.get(key);
-  if (values) values.push(value);
-  else map.set(key, [value]);
-}
-
-function ascending(a: number, b: number) {
-  return a - b;
-}
-
-/** Mid-rank percentile (0..100): ties split evenly so identical prices tie. */
 export function percentileRank(sorted: number[], value: number): number {
+  if (sorted.length === 0) return 50;
   let less = 0;
   let equal = 0;
   for (const entry of sorted) {
@@ -118,4 +152,12 @@ export function percentileRank(sorted: number[], value: number): number {
     else if (entry === value) equal += 1;
   }
   return ((less + equal / 2) / sorted.length) * 100;
+}
+
+function quantile(sorted: number[], fraction: number): number {
+  const index = (sorted.length - 1) * fraction;
+  const lower = Math.floor(index);
+  return (
+    sorted[lower] + (sorted[Math.ceil(index)] - sorted[lower]) * (index - lower)
+  );
 }

@@ -10,6 +10,7 @@ import {
 } from "@remixicon/react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
@@ -420,6 +421,12 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
           )}
         </div>
         <div className="ml-auto flex items-center gap-1">
+          <Link
+            href="/analyse"
+            className="mr-2 rounded-md bg-primary/10 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/20"
+          >
+            Analyse a house
+          </Link>
           <Button
             variant="ghost"
             size="icon"

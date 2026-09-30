@@ -15,3 +15,8 @@ next-env.d.ts
 # machine-local settings out.
 !.claude/
 .claude/settings.local.json
+
+# Workflow SDK generated routes and local run data
+app/.well-known/workflow/
+.workflow-data/
+/.swc

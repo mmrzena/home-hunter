@@ -1,6 +1,8 @@
-import { sql } from "@/db";
+import { sql as defaultSql } from "@/db";
 import type { Reason } from "@/db/schema";
 
+import type { Database } from "../lib/database";
+import { getMarketListings } from "../lib/market-data";
 import { PriceModel, type Sample } from "../lib/price-model";
 import { detectRedPhrase } from "../lib/red-flags";
 
@@ -9,6 +11,7 @@ export type ScoreSummary = {
   priced: number;
   goodDeals: number;
   flagged: number;
+  lastId: number;
 };
 
 // scam-flag base weights (summed, then gated by cheapness)
@@ -30,22 +33,32 @@ type Row = {
   land_area_m2: number | null;
   cadastral_code: string | null;
   size_band: string | null;
+  cluster_id: number | null;
+  property_kind: string | null;
+  lat: number | null;
+  lng: number | null;
   seller_type: string | null;
   has_ico: boolean | null;
   description: string | null;
   posted_at: string | null;
 };
 
-export async function score(): Promise<ScoreSummary> {
+export async function score(
+  sql: Database = defaultSql,
+  afterId = 0,
+  limit: number | null = null,
+): Promise<ScoreSummary> {
   const rows = await sql<Row[]>`
     SELECT id, price, usable_area_m2, land_area_m2, cadastral_code, size_band,
-           seller_type, has_ico, description, posted_at
-    FROM listings WHERE is_active
+           seller_type, has_ico, description, posted_at, cluster_id::int, property_kind, lat, lng
+    FROM listings WHERE is_active AND id > ${afterId} ORDER BY id LIMIT ${limit}
   `;
+
+  const ids = rows.map((row) => Number(row.id));
 
   // Highest price ever recorded per listing → price-drop signal.
   const drops = await sql<{ listing_id: string; max_price: string }[]>`
-    SELECT listing_id, max(price) AS max_price FROM price_history GROUP BY listing_id
+    SELECT listing_id, max(price) AS max_price FROM price_history WHERE listing_id = ANY(${ids}) GROUP BY listing_id
   `;
   const maxPriceById = new Map(
     drops.map((d) => [d.listing_id, Number(d.max_price)]),
@@ -61,7 +74,8 @@ export async function score(): Promise<ScoreSummary> {
        AND bit_count((ha.dhash # hb.dhash)::bit(64)) <= 10
       JOIN listings la ON la.id = ha.listing_id AND la.is_active AND la.geom IS NOT NULL
       JOIN listings lb ON lb.id = hb.listing_id AND lb.geom IS NOT NULL
-      WHERE la.cluster_id IS DISTINCT FROM lb.cluster_id
+      WHERE ha.listing_id = ANY(${ids})
+        AND la.cluster_id IS DISTINCT FROM lb.cluster_id
         AND ST_Distance(la.geom::geography, lb.geom::geography) > 2000
       GROUP BY ha.listing_id
     )
@@ -70,22 +84,28 @@ export async function score(): Promise<ScoreSummary> {
   const stolen = new Set(stolenRows.map((r) => r.id));
 
   const ppm2ById = new Map<string, number>();
-  const samples: Sample[] = [];
+  const samples = new Map<string, Sample>();
   for (const row of rows) {
     const price = row.price === null ? 0 : Number(row.price);
     const usable = row.usable_area_m2 ?? 0;
     if (price > 0 && usable > 0) {
       const ppm2 = Math.round(price / usable);
       ppm2ById.set(row.id, ppm2);
-      samples.push({
+      samples.set(row.id, {
         id: Number(row.id),
         code: row.cadastral_code,
         band: row.size_band,
-        ppm2,
+        ppm2: price / usable,
+        clusterId: row.cluster_id,
+        kind: row.property_kind,
+        usable,
+        land: row.land_area_m2,
+        lat: row.lat,
+        lng: row.lng,
       });
     }
   }
-  const model = new PriceModel(samples);
+  const model = new PriceModel(await getMarketListings(sql));
 
   const now = Date.now();
   const summary: ScoreSummary = {
@@ -93,20 +113,16 @@ export async function score(): Promise<ScoreSummary> {
     priced: 0,
     goodDeals: 0,
     flagged: 0,
+    lastId: afterId,
   };
 
   for (const row of rows) {
+    if (limit !== null && summary.scored > 0 && Date.now() - now > 100_000)
+      break;
     const price = row.price === null ? 0 : Number(row.price);
     const ppm2 = ppm2ById.get(row.id) ?? null;
-    const result =
-      ppm2 !== null
-        ? model.score({
-            id: Number(row.id),
-            code: row.cadastral_code,
-            band: row.size_band,
-            ppm2,
-          })
-        : null;
+    const sample = samples.get(row.id);
+    const result = sample ? model.score(sample) : null;
     const percentile = result?.percentile ?? null;
 
     const land = row.land_area_m2 ?? 0;
@@ -172,7 +188,7 @@ export async function score(): Promise<ScoreSummary> {
     if (percentile !== null && percentile <= DEAL_PCT) {
       dealReasons.push({
         code: "low_percentile",
-        label: `Bottom ${Math.round(percentile)}% of CZK/m² for the area`,
+        label: `Bottom ${Math.round(percentile)}% of CZK/m² among comparable houses`,
         weight: 1 - percentile / 100,
       });
     }
@@ -207,6 +223,7 @@ export async function score(): Promise<ScoreSummary> {
     `;
 
     summary.scored += 1;
+    summary.lastId = Number(row.id);
     if (ppm2 !== null) summary.priced += 1;
     if (isGoodDeal) summary.goodDeals += 1;
     if (scamScore >= SUSPICIOUS_SCORE) summary.flagged += 1;

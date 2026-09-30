@@ -12,7 +12,7 @@ const COMMANDS: Record<string, () => Promise<unknown>> = {
   hash: hashImages,
   bucket,
   dedupe,
-  score,
+  score: () => score(),
   pipeline: runPipeline,
 };
 

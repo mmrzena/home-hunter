@@ -14,15 +14,17 @@ percentile, scam signals, and distance. See `README.md` for the full picture.
 - **`worker/`** (Node/TS, run with `tsx`) — the pipeline
   `ingest → hash → bucket → dedupe → score`. Each stage is a module under
   `worker/pipeline/`, runnable individually via `worker/cli.ts`
-  (`npm run ingest|hash|bucket|dedupe|score|pipeline`) or daily via
-  `worker/index.ts` (node-cron). Sources implement `worker/sources/types.ts`
-  (`Source`). Three sources, all on by default (toggle the secondaries with
-  `ENABLE_BEZREALITKY` / `ENABLE_CESKEREALITY` = `false`): Sreality, Bezrealitky
-  (GraphQL `listAdverts`, region ids `R435514`/`R442397`; resolves everything at
-  list time so its `enrich` is a no-op), and České reality (no API — scrapes the
-  `stredo.ceskereality.cz` search for ids/URLs/price, then parses each detail
-  page's `individualProduct` JSON-LD + map coords in `enrich`; one subdomain
-  covers Praha + Středočeský).
+  (`npm run ingest|hash|bucket|dedupe|score`). The full run (`npm run
+  pipeline`, `worker/index.ts` node-cron) goes through `worker/durable/`:
+  small batches that each commit their work + checkpoint
+  (`pipeline_runs.state`) in one transaction, so a crash resumes mid-run.
+- **Daily cloud run = Vercel Cron → Workflow SDK.** `vercel.json` hits
+  `app/api/cron/pipeline` (bearer `CRON_SECRET`, `src/lib/cron-auth.ts`), which
+  starts `src/workflows/pipeline.ts` — a loop of `"use step"` calls to
+  `runBatch`. Steps return tiny progress objects; listing payloads stay in
+  Postgres. `app/api/pipeline` shows recent runs. GitHub Actions
+  (`.github/workflows/pipeline.yml`) is a manual-only fallback resuming the
+  same checkpoints.
 - **app (`app/`, `src/`)** — Next.js over Postgres via Drizzle. Read-only for
   listing data; the one write path is per-user triage (`app/api/triage`), gated
   on the better-auth session. Route handlers in `app/api/` (`clusters`,
@@ -148,6 +150,11 @@ npm run worker     # cron daemon (daily 06:00 + on boot)
   `bit_count((a # b)::bit(64))`.
 - `src/lib/env.ts` — zod-validated config, imported at boot by both app and
   worker. Defaults target the local compose Postgres so a fresh checkout runs.
+- `worker/durable/` — checkpointed pipeline. Checkpoint jsonb is written as
+  `${JSON.stringify(x)}::jsonb`, which is correct *only* because `drizzle(sql)`
+  in `src/db/index.ts` makes the shared pool's jsonb serializer pass-through;
+  a bare `postgres()` client would double-encode (see the integration test).
+  `npm run test:integration` needs `PIPELINE_TEST_DATABASE_URL`.
 - `src/lib/listing-status.ts` — shared status/tone logic (deal/overpriced/
   caution) used by cards, the detail sheet, and the map markers so they agree.
 - `src/styles/theme.css` — the single styling source (besides `app/globals.css`,

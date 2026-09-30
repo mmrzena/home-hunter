@@ -1,14 +1,11 @@
-# Runs the ingest pipeline against the cloud DB (Neon). The worker can't live on
-# Vercel (long jobs + sharp), so it runs here: nightly + on-demand.
+# Manual fallback runner. The daily schedule lives in vercel.json (Vercel Cron →
+# /api/cron/pipeline → Workflow SDK). Both resume the same Postgres checkpoints
+# (pipeline_runs), so this picks up a stuck cloud run where it stopped.
 #
-# Setup: add a repo secret DATABASE_URL = your Neon pooled connection string
-# (Settings → Secrets and variables → Actions). PostGIS lives in Neon, so this
-# job only needs Node + network.
+# Setup: repo secret DATABASE_URL = the Neon pooled connection string.
 name: pipeline
 
 on:
-  schedule:
-    - cron: "17 4 * * *" # ~06:17 Prague (UTC+2 summer / 05:17 winter); odd minute dodges GitHub's top-of-hour scheduler congestion
   workflow_dispatch: {} # manual "Run workflow" button
 
 concurrency:
@@ -18,8 +15,8 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    # Three sources × thousands of listings + per-row Neon round-trips run well
-    # past an hour; give it room (the job exits as soon as the pipeline is done).
+    # A full run from scratch takes well over an hour; the job exits as soon as
+    # the pipeline reaches "done".
     timeout-minutes: 180
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}

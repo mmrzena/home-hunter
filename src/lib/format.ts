@@ -49,6 +49,7 @@ const SOURCE_LABELS: Record<string, string> = {
   sreality: "Sreality",
   bezrealitky: "Bezrealitky",
   ceskereality: "České reality",
+  realingo: "Realingo",
 };
 
 /** Source key → portal display name (falls back to the raw key). */

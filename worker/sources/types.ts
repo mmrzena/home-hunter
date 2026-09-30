@@ -7,6 +7,8 @@ export type RawListing = {
   source: SourceName;
   sourceId: string;
   url?: string;
+  /** Original advert linked by an aggregator; used to find existing tracking. */
+  originalUrl?: string;
   price?: number;
   propertyKind?: PropertyKind;
 
@@ -35,10 +37,16 @@ export type RawListing = {
  * description, seller) used by bucketing + scam scoring. Splitting them lets
  * ingest enrich only new/changed listings and stay within rate limits.
  */
+export type PageOptions = {
+  page?: number;
+  regionIndex?: number;
+  singlePage?: boolean;
+};
+
 export interface Source {
   name: SourceName;
   listPages(): AsyncGenerator<RawListing>;
-  enrich(sourceId: string): Promise<Partial<RawListing>>;
+  enrich(sourceId: string, url?: string): Promise<Partial<RawListing>>;
   /** True once listPages paginated to completion (didn't hit the page cap). */
   completed(): boolean;
 }

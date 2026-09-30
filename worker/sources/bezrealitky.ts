@@ -1,7 +1,7 @@
 import { env } from "@/lib/env";
 
 import { postJson, throttle } from "../lib/http";
-import type { PropertyKind, RawListing, Source } from "./types";
+import type { PageOptions, PropertyKind, RawListing, Source } from "./types";
 
 // Bezrealitky's public GraphQL. The query is `listAdverts` (returns
 // AdvertList { list, totalCount }); one call carries everything we need —
@@ -97,18 +97,21 @@ type ListResponse = {
   data?: { listAdverts?: { totalCount?: unknown; list?: unknown } };
 };
 
-export function createBezrealitkySource(): Source {
+export function createBezrealitkySource(options: PageOptions = {}): Source {
   const pace = throttle(env.REQUEST_DELAY_MS);
   let didComplete = false;
 
   async function* listPages(): AsyncGenerator<RawListing> {
-    let offset = 0;
+    let offset = ((options.page ?? 1) - 1) * PER_PAGE;
     let total = Number.POSITIVE_INFINITY;
-    let page = 0;
+    let page = (options.page ?? 1) - 1;
+    const maxPage = options.singlePage
+      ? (options.page ?? 1)
+      : env.INGEST_MAX_PAGES;
     let completedAll = true;
 
     while (offset < total) {
-      if (page >= env.INGEST_MAX_PAGES) {
+      if (page >= maxPage) {
         completedAll = false;
         break;
       }
@@ -118,7 +121,12 @@ export function createBezrealitkySource(): Source {
         variables: { regions: REGION_OSM_IDS, limit: PER_PAGE, offset },
       });
       const result = asRecord(body?.data?.listAdverts);
-      const list = Array.isArray(result?.list) ? result.list : [];
+      if (
+        !Array.isArray(result?.list) ||
+        typeof result?.totalCount !== "number"
+      )
+        throw new Error("Bezrealitky search returned an unexpected response");
+      const list = result.list;
       total = toNumber(result?.totalCount) ?? list.length;
       if (list.length === 0) break;
 
@@ -178,4 +186,58 @@ function priceLabels(advert: Record<string, unknown> | undefined): string[] {
   const price = toNumber(advert?.price);
   const original = toNumber(advert?.originalPrice);
   return original && price && original > price ? ["LOWERED_PRICE"] : [];
+}
+
+/** Resolve only this advert's Apollo references, never related listings. */
+export function parseBezrealitkyDetail(
+  html: string,
+  sourceId: string,
+): Partial<RawListing> {
+  const script = html.match(
+    /<script\b[^>]*\bid="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i,
+  )?.[1];
+  if (!script) return {};
+  let data: unknown;
+  try {
+    data = JSON.parse(script);
+  } catch {
+    return {};
+  }
+  const cache = asRecord(
+    asRecord(asRecord(asRecord(data)?.props)?.pageProps)?.apolloCache,
+  );
+  const advert = asRecord(cache?.[`Advert:${sourceId}`]);
+  if (
+    !advert ||
+    advert.estateType !== "DUM" ||
+    advert.offerType !== "PRODEJ" ||
+    advert.currency !== "CZK" ||
+    advert.active === false ||
+    advert.archived === true
+  )
+    return {};
+  const gps = asRecord(advert.gps);
+  const images = Array.isArray(advert.publicImages) ? advert.publicImages : [];
+  const photos = images.flatMap((entry) => {
+    const ref = asRecord(entry)?.__ref;
+    const image = typeof ref === "string" ? asRecord(cache?.[ref]) : undefined;
+    const url = image?.['url({"filter":"RECORD_MAIN"})'];
+    return typeof url === "string" ? [url] : [];
+  });
+  const title = toText(advert['imageAltText({"locale":"CS"})']) ?? "";
+  return {
+    price: toNumber(advert.price),
+    usableAreaM2: toNumber(advert.surface),
+    landAreaM2: toNumber(advert.surfaceLand),
+    disposition: disposition(advert.disposition),
+    propertyKind: classifyKind(title),
+    lat: toNumber(gps?.lat),
+    lng: toNumber(gps?.lng),
+    localityText: toText(
+      advert['address({"locale":"CS","withHouseNumber":false})'],
+    ),
+    description: toText(advert.description),
+    photos,
+    labels: priceLabels(advert),
+  };
 }

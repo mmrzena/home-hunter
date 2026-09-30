@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withWorkflow } from "workflow/next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -7,4 +8,4 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: import.meta.dirname,
 };
 
-export default nextConfig;
+export default withWorkflow(nextConfig);

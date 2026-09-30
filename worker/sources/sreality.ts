@@ -2,7 +2,7 @@ import { env } from "@/lib/env";
 
 import { getJson, throttle } from "../lib/http";
 import { SREALITY_REGION_IDS } from "../lib/regions";
-import type { PropertyKind, RawListing, Source } from "./types";
+import type { PageOptions, PropertyKind, RawListing, Source } from "./types";
 
 // The public v2 API is gone; the live site uses /api/v1/estates/search (list)
 // and /api/v1/estates/{id} (detail). Shapes verified against the live endpoint.
@@ -29,9 +29,12 @@ function toNumber(value: unknown): number | undefined {
 function stripHtml(html: unknown): string | undefined {
   if (typeof html !== "string") return undefined;
   const text = html
+    .replace(/<br\s*\/?>(?:\s*)/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
   return text.length ? text : undefined;
 }
@@ -138,23 +141,44 @@ function detailUrl(
 }
 
 // ── source ────────────────────────────────────────────────────────────────
-export function createSrealitySource(): Source {
+export function createSrealitySource(options: PageOptions = {}): Source {
   const pace = throttle(env.REQUEST_DELAY_MS);
   let didComplete = false;
 
   async function* listPages(): AsyncGenerator<RawListing> {
     let completedAll = true;
 
-    for (const regionId of SREALITY_REGION_IDS) {
-      let page = 1;
-      while (page <= env.INGEST_MAX_PAGES) {
+    const regions = options.singlePage
+      ? SREALITY_REGION_IDS.slice(
+          options.regionIndex ?? 0,
+          (options.regionIndex ?? 0) + 1,
+        )
+      : SREALITY_REGION_IDS;
+    const maxPage = options.singlePage
+      ? (options.page ?? 1)
+      : env.INGEST_MAX_PAGES;
+    for (const regionId of regions) {
+      let page = options.page ?? 1;
+      while (page <= maxPage) {
         await pace();
         const url =
-          `${SEARCH}?category_main_cb=2&category_type_cb=1&per_page=${PER_PAGE}` +
-          `&page=${page}&locality_region_id=${regionId}`;
+          `${SEARCH}?category_main_cb=2&category_type_cb=1&limit=${PER_PAGE}` +
+          `&offset=${(page - 1) * PER_PAGE}&locality_region_id=${regionId}`;
         const body = asRecord(await getJson(url));
-        const results = Array.isArray(body?.results) ? body.results : [];
-        if (results.length === 0) break;
+        const pagination = asRecord(body?.pagination);
+        if (
+          !Array.isArray(body?.results) ||
+          typeof pagination?.total !== "number"
+        )
+          throw new Error("Sreality search returned an unexpected response");
+        const results = body.results;
+        if (results.length === 0) {
+          if ((toNumber(pagination?.total) ?? 0) > (page - 1) * PER_PAGE)
+            throw new Error(
+              "Sreality returned an empty page before the end of results",
+            );
+          break;
+        }
 
         for (const raw of results) {
           const estate = asRecord(raw);
@@ -189,10 +213,9 @@ export function createSrealitySource(): Source {
           };
         }
 
-        const pagination = asRecord(body?.pagination);
         const total = toNumber(pagination?.total) ?? 0;
         if (page * PER_PAGE >= total) break;
-        if (page === env.INGEST_MAX_PAGES) completedAll = false;
+        if (page === maxPage) completedAll = false;
         page += 1;
       }
     }
@@ -206,43 +229,7 @@ export function createSrealitySource(): Source {
     );
     if (!detail) return {};
 
-    const out: Partial<RawListing> = {};
-    out.description = stripHtml(detail.advert_description);
-    out.usableAreaM2 = toNumber(detail.usable_area);
-    out.landAreaM2 = toNumber(detail.estate_area ?? detail.garden_area);
-    out.builtUpAreaM2 = toNumber(detail.building_area ?? detail.floor_area);
-
-    const rooms = asRecord(detail.room_count_cb)?.name;
-    if (typeof rooms === "string") out.disposition = rooms;
-
-    const since = detail.since ?? detail.beginning_date;
-    if (typeof since === "string") {
-      const date = new Date(since);
-      if (!Number.isNaN(date.getTime())) out.postedAt = date;
-    }
-
-    const premise = asRecord(detail.premise);
-    const ico = asRecord(premise?.company)?.company_ic;
-    if (premise) {
-      out.sellerType = "agency";
-      out.hasIco = Boolean(ico);
-      const name = premise.name ?? premise.seo_name;
-      if (typeof name === "string") out.sellerName = name;
-    } else {
-      out.sellerType = "private";
-      out.hasIco = false;
-    }
-
-    const labels: string[] = [];
-    if (detail.exclusively_at_rk === true) labels.push("EXCLUSIVE");
-    const oldPrice = toNumber(
-      detail.price_summary_old_czk ?? detail.price_summary_old,
-    );
-    const price = toNumber(detail.price_czk);
-    if (oldPrice && price && oldPrice > price) labels.push("LOWERED_PRICE");
-    out.labels = labels;
-
-    return out;
+    return parseSrealityDetail(detail);
   }
 
   return {
@@ -251,4 +238,64 @@ export function createSrealitySource(): Source {
     enrich,
     completed: () => didComplete,
   };
+}
+
+export function parseSrealityDetail(
+  value: unknown,
+  photoSize: "thumbnail" | "large" = "thumbnail",
+): Partial<RawListing> {
+  const detail = asRecord(value);
+  if (!detail) return {};
+  const locality = asRecord(detail.locality);
+  const name = typeof detail.advert_name === "string" ? detail.advert_name : "";
+  const kind = classifyKind(detail.category_sub_cb, name);
+  const out: Partial<RawListing> = {
+    price: toNumber(detail.price_summary_czk ?? detail.price_czk),
+    propertyKind: kind,
+    localityText: localityText(locality),
+    lat: toNumber(locality?.gps_lat),
+    lng: toNumber(locality?.gps_lon),
+    photos: imageUrls(detail.advert_images).map((url) =>
+      photoSize === "large"
+        ? url.replace(SDN_TRANSFORM, "?fl=res,1200,1200,1|shr,,20|jpg,80")
+        : url,
+    ),
+    url: detailUrl(kind, locality, detail.hash_id),
+  };
+  out.description = stripHtml(detail.advert_description);
+  out.usableAreaM2 = toNumber(detail.usable_area);
+  out.landAreaM2 = toNumber(detail.estate_area ?? detail.garden_area);
+  out.builtUpAreaM2 = toNumber(detail.building_area ?? detail.floor_area);
+
+  const rooms = asRecord(detail.room_count_cb)?.name;
+  if (typeof rooms === "string") out.disposition = rooms;
+
+  const since = detail.since;
+  if (typeof since === "string") {
+    const date = new Date(since);
+    if (!Number.isNaN(date.getTime())) out.postedAt = date;
+  }
+
+  const premise = asRecord(detail.premise);
+  const ico = asRecord(premise?.company)?.company_ic;
+  if (premise) {
+    out.sellerType = "agency";
+    out.hasIco = Boolean(ico);
+    const name = premise.name ?? premise.seo_name;
+    if (typeof name === "string") out.sellerName = name;
+  } else {
+    out.sellerType = "private";
+    out.hasIco = false;
+  }
+
+  const labels: string[] = [];
+  if (detail.exclusively_at_rk === true) labels.push("EXCLUSIVE");
+  const oldPrice = toNumber(
+    detail.price_summary_old_czk ?? detail.price_summary_old,
+  );
+  const price = toNumber(detail.price_czk);
+  if (oldPrice && price && oldPrice > price) labels.push("LOWERED_PRICE");
+  out.labels = labels;
+
+  return out;
 }

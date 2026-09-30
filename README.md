@@ -29,13 +29,43 @@ Postgres 16 + PostGIS.
 5. **Dedupe** — clusters the same property (geo ≤ 50 m ∧ usable area ±10% ∧ same
    deal type ∧ ≥1 shared photo, Hamming ≤ 10) via union-find. A card shows the
    lowest price + every place it's listed.
-6. **Score** — a robust per-bucket CZK/m² distribution (median / p25 / p75 over
-   `area × size-band`, widened when thin) gives each listing a percentile, and:
+6. **Score** — compare recent active asking prices per usable m² for similar
+   houses in the same locality, widening to 5 / 15 / 30 km when needed. Match
+   property type, usable area (0.67–1.5×) and plot size (0.25–4× when known).
+   Exclude the subject and its known duplicates; count each cluster once.
+   Require 8 independent houses, with no country-wide fallback. This gives:
    - **Good deal** = low percentile ∧ not suspicious (price drops strengthen it)
    - **Overpriced** = high percentile
    - **Caution** = weighted scam flags with reasons (stolen photos via far-geo
      photo reuse, Czech red-phrase wording, private/no-IČO, brand-new), gated by
      cheapness — every flag carries a human-readable reason.
+
+## House analysis (`/analyse`)
+
+Paste a **house-for-sale detail URL** from Sreality, Bezrealitky, České reality or Realingo.
+The app fetches that listing on demand and shows its gallery, property details,
+asking-price comparison, all comparable listings, location, seller, description,
+and any existing price history or cross-portal matches. The original feed stays
+at `/`, with navigation between the two pages.
+
+- Uses the same price model as the scoring worker. The displayed range is the
+  middle 50% of comparable asking prices per m², scaled to the subject's usable
+  area; it is **not** a sale-price appraisal or a prediction interval.
+- Comparisons use active CZK sale adverts seen in the last **90 days**. Refresh
+  an old local database with `npm run pipeline` before expecting comparisons.
+  Confidence reflects sample depth, geographic scope, plot-data completeness
+  and price dispersion. Condition and renovation costs are not adjusted for.
+- Missing data or insufficient local evidence is shown explicitly. A database
+  outage still allows the extracted listing to be shown, without a valuation.
+- Realingo support is for pasted links. Its original-advert URL is used to
+  look up existing history and exclude known duplicates from comparisons;
+  external links are not crawled automatically. Locked or removed listings
+  cannot be imported. Realingo is not added to the background ingestion job.
+- Imports are read-only: they do not add listings to tracking or run photo
+  deduplication. Existing trust signals show their last scoring date.
+- URL validation allows only supported portal detail pages; redirects stay on
+  the same portal and listing. Downloads have a 20-second timeout and a 5 MB cap.
+- Run `npm test` for price-model and importer regression checks.
 
 ## The screen (`/`)
 
@@ -59,7 +89,9 @@ deduped cluster cards, kept in sync.
 Two processes, one Postgres:
 
 - **`worker/`** — Node/TS pipeline (`ingest → hash → bucket → dedupe → score`),
-  runnable stage-by-stage via the CLI or daily via cron. Writes Postgres.
+  runnable stage-by-stage via the CLI, or as checkpointed batches
+  (`worker/durable/`) driven by the CLI, the node-cron daemon, or a Vercel
+  Cron → Workflow SDK run. Writes Postgres.
 - **app (`app/`, `src/`)** — Next.js, **read-only** over Postgres through
   Drizzle. The heavy/fragile scraping never touches the request path. Read API:
   `app/api/clusters` + `app/api/config`; the screen is `app/page.tsx` →
@@ -125,26 +157,48 @@ are labeled "low confidence".
 | `REQUEST_DELAY_MS` | `1200` | inter-request delay to the source API |
 | `MAX_IMAGES_PER_LISTING` | `8` | images hashed per listing |
 | `FEED_WINDOW_HOURS` | `48` | "new / price-changed" window |
+| `CRON_SECRET` | — | bearer token for `/api/cron/pipeline` + `/api/pipeline` (32+ chars; unset = both return 401) |
 
-## Deploying (hybrid: Vercel + Neon + GitHub Actions)
+## Deploying (Vercel + Neon)
 
-The web app can run on Vercel, but the ingest worker can't (long jobs + `sharp`),
-so it runs as a scheduled GitHub Actions job. All three share one cloud DB.
+The web app and the daily pipeline both run on Vercel, sharing one Neon DB.
+The pipeline is a [Workflow SDK](https://useworkflow.dev) durable workflow
+(`src/workflows/`) that loops one small, retry-safe batch per step
+(`worker/durable/run-batch.ts`). Each batch commits its work and its checkpoint
+(`pipeline_runs.state`) in one transaction, so a timeout or crash resumes from the
+last committed batch. The CLI (`npm run pipeline`) drives the same batches, so
+local and cloud runs resume each other's checkpoints.
 
-1. **Database — Neon** (or Vercel Postgres, which is Neon). Create a project,
+1. **Database: Neon** (or Vercel Postgres, which is Neon). Create a project,
    then `CREATE EXTENSION IF NOT EXISTS postgis;` (the migrate also does this).
    Grab the **pooled** connection string (host has `-pooler`, `?sslmode=require`).
-   Seed it from your machine:
+   Migrate it from your machine (again after every new migration, since Vercel
+   doesn't run migrations):
    ```bash
    DATABASE_URL="<neon-pooled-url>" npm run db:migrate
-   DATABASE_URL="<neon-pooled-url>" npm run pipeline   # first data load
+   DATABASE_URL="<neon-pooled-url>" npm run pipeline   # optional first data load
    ```
-2. **Web — Vercel.** Import the repo, set env `DATABASE_URL` = the Neon URL and
-   `DB_POOL_MAX=1` (serverless). Optional `ANCHOR_*`. Default `next build`. Tiles
-   + thumbnails are key-free, so nothing else to configure.
-3. **Worker — GitHub Actions.** Add a repo secret `DATABASE_URL` (the Neon URL);
-   `.github/workflows/pipeline.yml` runs `db:migrate` + `pipeline` nightly and
-   on-demand (Actions → "pipeline" → Run workflow).
+2. **Vercel.** Import the repo and set env `DATABASE_URL` = the Neon URL,
+   `DB_POOL_MAX=1` (serverless), and `CRON_SECRET` = a random string of 32+
+   characters (`openssl rand -hex 32`). Optional `ANCHOR_*`. Default `next build`.
+3. **Daily run: Vercel Cron.** `vercel.json` calls `GET /api/cron/pipeline` at
+   04:17 UTC (~06:17 Prague in summer). Vercel sends `Authorization: Bearer
+   $CRON_SECRET`. The route creates or resumes today's `pipeline_runs` row and
+   starts the workflow, unless one is already running (a single advisory lock
+   plus a unique index allow only one unfinished run). Trigger it by hand the
+   same way:
+   ```bash
+   curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/cron/pipeline
+   curl -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/pipeline  # last 10 runs + progress
+   ```
+4. **Fallback: GitHub Actions (manual only).** `.github/workflows/pipeline.yml`
+   is no longer scheduled. Run it from Actions → "pipeline" → Run workflow
+   (needs a repo secret `DATABASE_URL`). It migrates, then resumes the same
+   checkpoints as the cron.
+
+Crawl safety: a source's unseen listings are only deactivated after a
+complete crawl. A capped (`INGEST_MAX_PAGES`) or failed crawl keeps them
+active and records a warning in the run's `state.warnings`.
 
 Local dev uses docker-compose throughout; `engines.node` is `>=22` for Vercel
 compatibility (local dev still uses Node 24 via `.nvmrc`).

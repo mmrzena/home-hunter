@@ -1,7 +1,7 @@
 import { env } from "@/lib/env";
 
 import { getText, throttle } from "../lib/http";
-import type { PropertyKind, RawListing, Source } from "./types";
+import type { PageOptions, PropertyKind, RawListing, Source } from "./types";
 
 /**
  * České reality (regional subdomains). No JSON API: the search pages are scraped
@@ -79,6 +79,7 @@ const NAMED_ENTITIES: Record<string, string> = {
   Tcaron: "Ť",
   Uring: "Ů",
   Zcaron: "Ž",
+  sup2: "²",
   nbsp: " ",
   amp: "&",
   quot: '"',
@@ -94,7 +95,10 @@ function decodeEntities(value: string): string {
       String.fromCodePoint(Number.parseInt(hex, 16)),
     )
     .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)))
-    .replace(/&([a-zA-Z]+);/g, (whole, name) => NAMED_ENTITIES[name] ?? whole);
+    .replace(
+      /&([a-zA-Z][a-zA-Z0-9]*);/g,
+      (whole, name) => NAMED_ENTITIES[name] ?? whole,
+    );
 }
 
 function cleanDescription(value: unknown): string | undefined {
@@ -160,7 +164,7 @@ function galleryPhotos(html: string, ldImage: unknown): string[] {
   return [...new Set(raw)].slice(0, env.MAX_IMAGES_PER_LISTING);
 }
 
-export function createCeskeRealitySource(): Source {
+export function createCeskeRealitySource(options: PageOptions = {}): Source {
   const pace = throttle(env.REQUEST_DELAY_MS);
   const detailUrlById = new Map<string, string>();
   let didComplete = false;
@@ -169,13 +173,16 @@ export function createCeskeRealitySource(): Source {
     let completedAll = true;
 
     for (const base of BASES) {
-      let page = 1;
-      while (page <= env.INGEST_MAX_PAGES) {
+      let page = options.page ?? 1;
+      const maxPage = options.singlePage ? page : env.INGEST_MAX_PAGES;
+      while (page <= maxPage) {
         await pace();
         let html: string;
         try {
           html = await getText(`${base}${SEARCH_PATH}&strana=${page}`);
         } catch (error) {
+          if (options.singlePage) throw error;
+          completedAll = false;
           console.warn(`ceskereality ${base} page ${page} failed:`, error);
           break;
         }
@@ -217,51 +224,34 @@ export function createCeskeRealitySource(): Source {
           };
         }
 
-        if (seen.size === 0) break;
-        if (page === env.INGEST_MAX_PAGES) completedAll = false;
+        if (seen.size === 0) {
+          // Empty HTML can also be a changed layout or challenge page. Never prove removals from it.
+          completedAll = false;
+          break;
+        }
+        if (page === maxPage) completedAll = false;
         page += 1;
       }
     }
     didComplete = completedAll;
   }
 
-  async function enrich(sourceId: string): Promise<Partial<RawListing>> {
-    const url = detailUrlById.get(sourceId);
+  async function enrich(
+    sourceId: string,
+    detailUrl?: string,
+  ): Promise<Partial<RawListing>> {
+    const url = detailUrl ?? detailUrlById.get(sourceId);
     if (!url) return {};
     await pace();
     let html: string;
     try {
       html = await getText(url);
-    } catch {
+    } catch (error) {
+      if (options.singlePage) throw error;
       return {};
     }
 
-    const out: Partial<RawListing> = {};
-    const product = productLd(html);
-    const offers = asRecord(product?.offers);
-    out.price = toNumber(offers?.price);
-    out.description = cleanDescription(product?.description);
-
-    const locality = asRecord(
-      asRecord(offers?.areaServed)?.address,
-    )?.addressLocality;
-    if (typeof locality === "string" && locality.length > 0)
-      out.localityText = locality;
-
-    const name = typeof product?.name === "string" ? product.name : "";
-    const area = name.match(/(\d{2,4})\s*m[²2]/);
-    if (area) out.usableAreaM2 = Number(area[1]);
-
-    const { lat, lng } = parseGps(html);
-    if (lat !== undefined && lng !== undefined) {
-      out.lat = lat;
-      out.lng = lng;
-    }
-
-    const photos = galleryPhotos(html, product?.image);
-    if (photos.length > 0) out.photos = photos;
-
-    return out;
+    return parseCeskeRealityDetail(html);
   }
 
   return {
@@ -270,4 +260,47 @@ export function createCeskeRealitySource(): Source {
     enrich,
     completed: () => didComplete,
   };
+}
+
+export function parseCeskeRealityDetail(html: string): Partial<RawListing> {
+  const out: Partial<RawListing> = {};
+  const product = productLd(html);
+  const offers = asRecord(product?.offers);
+  if (
+    product?.additionalType !== "House" ||
+    offers?.["@type"] !== "OfferForPurchase"
+  )
+    return {};
+  out.price =
+    offers?.priceCurrency === "CZK" ? toNumber(offers.price) : undefined;
+  const seller = asRecord(offers?.offeredby);
+  out.sellerName = cleanDescription(seller?.name);
+  if (seller?.["@type"] === "RealEstateAgent") out.sellerType = "agency";
+  const land = html.match(
+    /Plocha pozemku<\/span>\s*<span[^>]*>\s*([\d\s ]+)\s*m/,
+  );
+  out.landAreaM2 = land ? toNumber(land[1]) : undefined;
+  out.description = cleanDescription(product?.description);
+
+  const locality = asRecord(
+    asRecord(offers?.areaServed)?.address,
+  )?.addressLocality;
+  if (typeof locality === "string" && locality.length > 0)
+    out.localityText = locality;
+
+  const name = typeof product?.name === "string" ? product.name : "";
+  out.propertyKind = classifyKind(name);
+  const area = name.match(/(\d{2,4})\s*m[²2]/);
+  if (area) out.usableAreaM2 = Number(area[1]);
+
+  const { lat, lng } = parseGps(html);
+  if (lat !== undefined && lng !== undefined) {
+    out.lat = lat;
+    out.lng = lng;
+  }
+
+  const photos = galleryPhotos(html, product?.image);
+  if (photos.length > 0) out.photos = photos;
+
+  return out;
 }
