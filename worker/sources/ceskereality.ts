@@ -1,7 +1,13 @@
 import { env } from "@/lib/env";
 
 import { getText, throttle } from "../lib/http";
-import type { PageOptions, PropertyKind, RawListing, Source } from "./types";
+import {
+  type PageOptions,
+  type PropertyKind,
+  type RawListing,
+  type Source,
+  searchesFor,
+} from "./types";
 
 /**
  * České reality (regional subdomains). No JSON API: the search pages are scraped
@@ -13,12 +19,21 @@ import type { PageOptions, PropertyKind, RawListing, Source } from "./types";
  * other sources). Every parse is defensive: a missing field yields `undefined`,
  * never a throw, so a markup change degrades gracefully rather than crashing.
  */
-// "Střední Čechy" on České reality covers both target regions — it includes
-// the praha-hlavni-mesto sub-filter alongside the Středočeský districts — so
-// this one subdomain spans Praha + Středočeský. (There is no praha.* subdomain;
-// the regional sites are compass-based: stredo / severo / jiho / vychodo / zapado.)
-const BASES = ["https://stredo.ceskereality.cz"] as const;
-const SEARCH_PATH = "/prodej/rodinne-domy/?sff=1";
+// "Střední Čechy" on České reality covers Praha + Středočeský — it includes
+// the praha-hlavni-mesto sub-filter alongside the Středočeský districts. (There
+// is no praha.* subdomain; the regional sites are compass-based: stredo / severo
+// / jiho / vychodo / zapado.) Okres Jičín lives on "Východní Čechy", filtered by
+// its district path segment.
+const SEARCHES = [
+  {
+    base: "https://stredo.ceskereality.cz",
+    searchPath: "/prodej/rodinne-domy/",
+  },
+  {
+    base: "https://vychodo.ceskereality.cz",
+    searchPath: "/prodej/rodinne-domy/jicin/",
+  },
+] as const;
 
 // Each card opens with its image-link anchor (id in the URL tail); slicing from
 // one anchor to the next bounds a single card, so the thumbnail, alt, and footer
@@ -172,14 +187,14 @@ export function createCeskeRealitySource(options: PageOptions = {}): Source {
   async function* listPages(): AsyncGenerator<RawListing> {
     let completedAll = true;
 
-    for (const base of BASES) {
+    for (const { base, searchPath } of searchesFor(SEARCHES, options)) {
       let page = options.page ?? 1;
       const maxPage = options.singlePage ? page : env.INGEST_MAX_PAGES;
       while (page <= maxPage) {
         await pace();
         let html: string;
         try {
-          html = await getText(`${base}${SEARCH_PATH}&strana=${page}`);
+          html = await getText(`${base}${searchPath}?sff=1&strana=${page}`);
         } catch (error) {
           if (options.singlePage) throw error;
           completedAll = false;
@@ -229,6 +244,8 @@ export function createCeskeRealitySource(options: PageOptions = {}): Source {
           completedAll = false;
           break;
         }
+        // The last results page has cards but no link onward.
+        if (!new RegExp(`strana=${page + 1}(?!\\d)`).test(html)) break;
         if (page === maxPage) completedAll = false;
         page += 1;
       }
@@ -256,6 +273,7 @@ export function createCeskeRealitySource(options: PageOptions = {}): Source {
 
   return {
     name: "ceskereality",
+    searchCount: SEARCHES.length,
     listPages,
     enrich,
     completed: () => didComplete,

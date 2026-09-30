@@ -144,8 +144,8 @@ export async function ingestBatch(
     return;
   }
   state.sourceComplete &&= state.pageComplete;
-  if (source.name === "sreality" && state.regionIndex === 0) {
-    state.regionIndex = 1;
+  if (state.regionIndex + 1 < source.searchCount) {
+    state.regionIndex++;
     state.page = 1;
     return;
   }

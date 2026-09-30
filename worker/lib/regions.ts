@@ -1,19 +1,29 @@
 /**
- * Target regions. Sreality filters by its internal `locality_region_id`
- * (Praha = 10, Středočeský kraj = 11). The bbox is a coarse WGS84 safety net to
- * drop anything clearly outside the two regions if the region filter ever drifts.
+ * Target areas: Praha, Středočeský kraj, and okres Jičín (Královéhradecký).
+ * Sreality filters by its internal locality ids, one search per entry: a kraj
+ * by `locality_region_id`, an okres by `locality_district_id`. The
+ * bbox is a coarse WGS84 safety net to drop anything clearly outside these areas
+ * if a filter ever drifts.
  *
- * NOTE: verify the region ids against the live API on first run — they're
- * undocumented. If results look wrong, check sreality.cz's network calls.
+ * The ids are undocumented (verified live 2026-09). If results look wrong,
+ * check sreality.cz's network calls.
  */
-export const SREALITY_REGION_IDS = [10, 11] as const;
+export const SREALITY_LOCALITIES = [
+  { param: "locality_region_id", id: 10, label: "Praha" },
+  { param: "locality_region_id", id: 11, label: "Středočeský kraj" },
+  { param: "locality_district_id", id: 30, label: "okres Jičín" },
+] as const satisfies readonly {
+  param: "locality_region_id" | "locality_district_id";
+  id: number;
+  label: string;
+}[];
 
-/** Coarse bbox covering Prague + Středočeský kraj (lat/lng, WGS84). */
+/** Coarse bbox covering Prague + Středočeský kraj + okres Jičín (lat/lng, WGS84). */
 export const REGION_BBOX = {
   latMin: 49.4,
   latMax: 50.6,
   lngMin: 13.4,
-  lngMax: 15.5,
+  lngMax: 15.8,
 } as const;
 
 export function inRegionBbox(lat: number | undefined, lng: number | undefined) {

@@ -1,4 +1,6 @@
 import type { Reason } from "@/db/schema";
+import type { NearbyStation } from "@/lib/stations";
+import type { TrainTrip } from "@/lib/train-times";
 import type { ClusterMember } from "@/lib/types";
 import type { MarketListing } from "../../worker/lib/market-data";
 import type { ScoreResult } from "../../worker/lib/price-model";
@@ -12,7 +14,8 @@ export type HouseAnalysis = {
   warnings: string[];
   location: {
     pragueKm: number | null;
-    station: { name: string; km: number } | null;
+    /** Closest stations, nearest first, each with its fastest morning train to Prague. */
+    stations: (NearbyStation & { train: TrainTrip | null })[];
     population: number | null;
     settlementClass: string | null;
     anchorKm: number | null;

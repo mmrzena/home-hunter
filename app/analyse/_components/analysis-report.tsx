@@ -11,6 +11,7 @@ import {
 } from "@/lib/format";
 import { PriceAnalysis } from "./price-analysis";
 import { PropertyGallery } from "./property-gallery";
+import { TrainConnections } from "./train-connections";
 
 const DATE = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -42,10 +43,6 @@ export function AnalysisReport({ report }: { report: HouseAnalysis }) {
   ];
   const locationFacts = [
     ["Prague centre", formatDistance(location.pragueKm)],
-    [
-      location.station?.name ?? "Nearest train station",
-      formatDistance(location.station?.km),
-    ],
     ["Settlement", location.settlementClass ?? "Unknown"],
     ["Population", formatPopulation(location.population)],
     ...(location.anchorLabel
@@ -103,6 +100,15 @@ export function AnalysisReport({ report }: { report: HouseAnalysis }) {
           </ul>
         </section>
       )}
+      {listing.lat != null &&
+        listing.lng != null &&
+        location.stations.length > 0 && (
+          <TrainConnections
+            house={{ lat: listing.lat, lng: listing.lng }}
+            stations={location.stations}
+            pragueKm={location.pragueKm}
+          />
+        )}
       <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
         <section className="rounded-2xl border p-6 sm:p-8">
           <div className="flex items-center justify-between gap-4">
@@ -118,9 +124,8 @@ export function AnalysisReport({ report }: { report: HouseAnalysis }) {
             ))}
           </dl>
           <p className="mt-6 text-xs leading-relaxed text-muted-foreground">
-            Distances are straight-line estimates from the advertised location,
-            not travel times. Station and settlement data cover Prague and
-            Central Bohemia.
+            Distances are straight-line estimates from the advertised location.
+            Settlement data cover Prague and Central Bohemia.
           </p>
           {listing.lat != null && listing.lng != null && (
             <a

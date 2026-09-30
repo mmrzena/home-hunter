@@ -43,8 +43,20 @@ export type PageOptions = {
   singlePage?: boolean;
 };
 
+/** The one search a single-page crawl step covers, or every search for a full crawl. */
+export function searchesFor<T>(
+  searches: readonly T[],
+  options: PageOptions,
+): readonly T[] {
+  if (!options.singlePage) return searches;
+  const index = options.regionIndex ?? 0;
+  return searches.slice(index, index + 1);
+}
+
 export interface Source {
   name: SourceName;
+  /** Separate searches (regions/districts) one crawl walks; `PageOptions.regionIndex` picks one. */
+  searchCount: number;
   listPages(): AsyncGenerator<RawListing>;
   enrich(sourceId: string, url?: string): Promise<Partial<RawListing>>;
   /** True once listPages paginated to completion (didn't hit the page cap). */

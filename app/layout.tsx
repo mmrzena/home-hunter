@@ -24,7 +24,7 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "home-hunter",
   description:
-    "Deduped, price-scored house listings for Prague + Středočeský kraj.",
+    "Deduped, price-scored house listings for Prague, Středočeský kraj and okres Jičín.",
 };
 
 export default function RootLayout({

@@ -6,8 +6,9 @@ import { placeInfo } from "@/lib/places";
 import {
   distanceToPragueKm,
   haversineKm,
-  nearestStation,
+  nearestStations,
 } from "@/lib/stations";
+import { fastestTrainToPrague } from "@/lib/train-times";
 import type { ClusterMember } from "@/lib/types";
 import {
   type ListingTarget,
@@ -17,6 +18,8 @@ import { getMarketListings } from "../../worker/lib/market-data";
 import { PriceModel, sizeBand } from "../../worker/lib/price-model";
 import { detectRedPhrase } from "../../worker/lib/red-flags";
 import { importListing } from "../../worker/sources/import-listing";
+
+const STATION_COUNT = 3;
 
 type StoredListing = {
   id: number;
@@ -40,6 +43,11 @@ export async function analyseHouse(
     listing.lng ?? null,
     listing.localityText ?? null,
   );
+  const stations = hasCoordinates
+    ? nearestStations(lat, lng, STATION_COUNT)
+    : [];
+  // Runs alongside the market lookups below; it never throws.
+  const trainTrips = Promise.all(stations.map(fastestTrainToPrague));
   const result: HouseAnalysis = {
     listing: { ...listing, postedAt: postedAt?.toISOString() },
     fetchedAt: new Date().toISOString(),
@@ -48,7 +56,7 @@ export async function analyseHouse(
     warnings: [],
     location: {
       pragueKm: hasCoordinates ? distanceToPragueKm(lat, lng) : null,
-      station: hasCoordinates ? nearestStation(lat, lng) : null,
+      stations: [],
       ...place,
       anchorKm:
         hasCoordinates && anchor
@@ -175,5 +183,10 @@ export async function analyseHouse(
       "Market data is unavailable right now. The listing was imported, but price comparisons and history may be incomplete.",
     );
   }
+  const trips = await trainTrips;
+  result.location.stations = stations.map((station, index) => ({
+    ...station,
+    train: trips[index],
+  }));
   return result;
 }

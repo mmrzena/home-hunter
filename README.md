@@ -1,6 +1,7 @@
 # home-hunter
 
-A personal tool to find a **house to buy** in **Prague + Středočeský kraj**.
+A personal tool to find a **house to buy** in **Prague + Středočeský kraj +
+okres Jičín**.
 It ingests listings from Czech property portals, **dedupes** the same house
 listed by multiple agents, and **scores** each one on price (deal ↔ overpriced),
 trust (scam signals), and distance to a place you care about — then shows the
@@ -12,8 +13,8 @@ Postgres 16 + PostGIS.
 ## What it does
 
 1. **Ingest** — pages the Sreality public JSON API for family houses + villas
-   for sale (`category_main_cb=2`, `category_type_cb=1`) across Prague +
-   Středočeský kraj. Polite: a real User-Agent, a request delay, backoff, and
+   for sale (`category_main_cb=2`, `category_type_cb=1`) across Prague,
+   Středočeský kraj and okres Jičín (`worker/lib/regions.ts`). Polite: a real User-Agent, a request delay, backoff, and
    detail fetched only for new/changed listings. Two more sources run by default:
    Bezrealitky (the no-commission portal, via its GraphQL API) and České reality
    (scraped); disable either with `ENABLE_BEZREALITKY=false` /
@@ -48,6 +49,10 @@ asking-price comparison, all comparable listings, location, seller, description,
 and any existing price history or cross-portal matches. The original feed stays
 at `/`, with navigation between the two pages.
 
+- **Getting to Prague:** a map of the house and its 3 nearest railway stations,
+  each with the fastest weekday-morning train (06:00–09:00) to Praha hl.n.,
+  its changes and lines. Times come from the free [Transitous](https://transitous.org)
+  router, fetched on demand; if it's unreachable the report just shows no train.
 - Uses the same price model as the scoring worker. The displayed range is the
   middle 50% of comparable asking prices per m², scaled to the subject's usable
   area; it is **not** a sale-price appraisal or a prediction interval.

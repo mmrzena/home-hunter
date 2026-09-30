@@ -7,9 +7,10 @@ import type { PageOptions, PropertyKind, RawListing, Source } from "./types";
 // AdvertList { list, totalCount }); one call carries everything we need —
 // price, areas, gps, gallery, description — so there's no separate detail fetch.
 // Region filter uses OSM relation ids in their `R`-prefixed form (verified live):
-// Praha = R435514, Středočeský kraj = R442397.
+// Praha = R435514, Středočeský kraj = R442397, okres Jičín = R441987. One query
+// takes them all.
 const ENDPOINT = "https://api.bezrealitky.cz/graphql/";
-const REGION_OSM_IDS = ["R435514", "R442397"] as const;
+const REGION_OSM_IDS = ["R435514", "R442397", "R441987"] as const;
 const PER_PAGE = 100;
 const DETAIL_BASE = "https://www.bezrealitky.cz/nemovitosti-byty-domy";
 
@@ -176,6 +177,7 @@ export function createBezrealitkySource(options: PageOptions = {}): Source {
 
   return {
     name: "bezrealitky",
+    searchCount: 1,
     listPages,
     enrich,
     completed: () => didComplete,

@@ -5,7 +5,7 @@ Guidance for AI agents working in this repo.
 ## What this is
 
 **home-hunter** — a single-user tool to find a house to buy in Prague +
-Středočeský kraj. It ingests Czech property listings, dedupes the same house
+Středočeský kraj + okres Jičín. It ingests Czech property listings, dedupes the same house
 across agents (perceptual image hashing + geo), and scores each on price
 percentile, scam signals, and distance. See `README.md` for the full picture.
 
@@ -46,8 +46,11 @@ percentile, scam signals, and distance. See `README.md` for the full picture.
   undocumented endpoint degrades gracefully instead of crashing the pipeline.
 - **Sreality is undocumented and moved.** The live API is
   `/api/v1/estates/search` (list) + `/api/v1/estates/{id}` (detail) — the old
-  `/api/cs/v2/` is gone. Region filter is `locality_region_id` (10 = Praha,
-  11 = Středočeský). Detail page URLs are
+  `/api/cs/v2/` is gone. Areas are `SREALITY_LOCALITIES` in `worker/lib/regions.ts`, one search
+  each: `locality_region_id` (10 = Praha, 11 = Středočeský) or
+  `locality_district_id` (30 = okres Jičín). Bezrealitky takes OSM relation ids
+  (Jičín = `R441987`); České reality uses `vychodo.…/prodej/rodinne-domy/jicin/`.
+  A source's `searchCount` drives the durable ingest's `regionIndex`. Detail page URLs are
   `/detail/prodej/dum/{sub}/{slug}/{hash_id}`; the `sub` must be a real keyword
   (`rodinny`/`vila`/`chata`) or it 404s (the slug can be anything — it redirects).
 - **Image CDN.** `sdn.cz` hotlink-protects raw image URLs (401). Only the

@@ -56,3 +56,18 @@ const SOURCE_LABELS: Record<string, string> = {
 export function formatSource(source: string): string {
   return SOURCE_LABELS[source] ?? source;
 }
+
+/** Journey length: "46 min", "2 h 21 min". */
+export function formatDuration(minutes: number | null | undefined): string {
+  if (minutes == null) return "—";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
+}
+
+/** Changes on a journey: "direct", "1 change", "2 changes". */
+export function formatTransfers(transfers: number): string {
+  if (transfers === 0) return "direct";
+  return transfers === 1 ? "1 change" : `${transfers} changes`;
+}

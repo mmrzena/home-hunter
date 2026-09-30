@@ -1,8 +1,14 @@
 import { env } from "@/lib/env";
 
 import { getJson, throttle } from "../lib/http";
-import { SREALITY_REGION_IDS } from "../lib/regions";
-import type { PageOptions, PropertyKind, RawListing, Source } from "./types";
+import { SREALITY_LOCALITIES } from "../lib/regions";
+import {
+  type PageOptions,
+  type PropertyKind,
+  type RawListing,
+  type Source,
+  searchesFor,
+} from "./types";
 
 // The public v2 API is gone; the live site uses /api/v1/estates/search (list)
 // and /api/v1/estates/{id} (detail). Shapes verified against the live endpoint.
@@ -148,22 +154,17 @@ export function createSrealitySource(options: PageOptions = {}): Source {
   async function* listPages(): AsyncGenerator<RawListing> {
     let completedAll = true;
 
-    const regions = options.singlePage
-      ? SREALITY_REGION_IDS.slice(
-          options.regionIndex ?? 0,
-          (options.regionIndex ?? 0) + 1,
-        )
-      : SREALITY_REGION_IDS;
+    const localities = searchesFor(SREALITY_LOCALITIES, options);
     const maxPage = options.singlePage
       ? (options.page ?? 1)
       : env.INGEST_MAX_PAGES;
-    for (const regionId of regions) {
+    for (const locality of localities) {
       let page = options.page ?? 1;
       while (page <= maxPage) {
         await pace();
         const url =
           `${SEARCH}?category_main_cb=2&category_type_cb=1&limit=${PER_PAGE}` +
-          `&offset=${(page - 1) * PER_PAGE}&locality_region_id=${regionId}`;
+          `&offset=${(page - 1) * PER_PAGE}&${locality.param}=${locality.id}`;
         const body = asRecord(await getJson(url));
         const pagination = asRecord(body?.pagination);
         if (
@@ -234,6 +235,7 @@ export function createSrealitySource(options: PageOptions = {}): Source {
 
   return {
     name: "sreality",
+    searchCount: SREALITY_LOCALITIES.length,
     listPages,
     enrich,
     completed: () => didComplete,

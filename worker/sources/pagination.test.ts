@@ -54,3 +54,39 @@ test("empty HTML cannot deactivate previously known České reality listings", a
   assert.deepEqual(await collect(source), []);
   assert.equal(source.completed(), false);
 });
+
+test("Sreality searches okres Jičín by district id", async (context) => {
+  const urls: string[] = [];
+  context.mock.method(globalThis, "fetch", async (url: string) => {
+    urls.push(url);
+    return Response.json({ results: [], pagination: { total: 0 } });
+  });
+  const source = createSrealitySource({ singlePage: true, regionIndex: 2 });
+  await collect(source);
+  assert.equal(source.searchCount, 3);
+  assert.equal(new URL(urls[0]).searchParams.get("locality_district_id"), "30");
+});
+
+test("České reality completes a search on its last page and walks Jičín", async (context) => {
+  const urls: string[] = [];
+  const card = (id: number) =>
+    `<a href="/prodej/rodinne-domy/dum-${id}.html" class="i-estate__image-link"><img alt="Prodej rodinného domu 120 m² Valdice"></a>`;
+  context.mock.method(globalThis, "fetch", async (url: string) => {
+    urls.push(url);
+    return new Response(`<html>${card(1)}${card(2)}</html>`);
+  });
+  const source = createCeskeRealitySource({ singlePage: true, regionIndex: 1 });
+  const items = await collect(source);
+  assert.equal(items.length, 2);
+  assert.equal(source.searchCount, 2);
+  assert.ok(
+    urls[0].startsWith(
+      "https://vychodo.ceskereality.cz/prodej/rodinne-domy/jicin/?sff=1&strana=1",
+    ),
+  );
+  assert.equal(
+    items[0].url,
+    "https://vychodo.ceskereality.cz/prodej/rodinne-domy/dum-1.html",
+  );
+  assert.equal(source.completed(), true);
+});

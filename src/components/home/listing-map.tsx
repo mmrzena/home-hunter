@@ -7,14 +7,9 @@ import { useTheme } from "next-themes";
 import { useEffect, useRef, useState } from "react";
 
 import { markerTone, TONE_HEX } from "@/lib/listing-status";
+import { DARK_MAP_STYLE, LIGHT_MAP_STYLE } from "@/lib/map-styles";
 import type { AppConfig, ClusterCard } from "@/lib/types";
 
-// Free, no-key CARTO basemaps — clean Positron in light, matching Dark Matter
-// in dark. Both keep the colored markers legible.
-const LIGHT_STYLE =
-  "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
-const DARK_STYLE =
-  "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 const PRAGUE: [number, number] = [14.45, 50.0];
 
 export function ListingMap({
@@ -61,7 +56,7 @@ export function ListingMap({
     try {
       map = new maplibregl.Map({
         container: containerRef.current,
-        style: isDarkRef.current ? DARK_STYLE : LIGHT_STYLE,
+        style: isDarkRef.current ? DARK_MAP_STYLE : LIGHT_MAP_STYLE,
         center: PRAGUE,
         zoom: 8,
         attributionControl: { compact: true },
@@ -86,7 +81,7 @@ export function ListingMap({
   // Swap the basemap when the theme toggles. DOM-based markers live outside the
   // style, so they survive setStyle untouched.
   useEffect(() => {
-    mapRef.current?.setStyle(isDark ? DARK_STYLE : LIGHT_STYLE);
+    mapRef.current?.setStyle(isDark ? DARK_MAP_STYLE : LIGHT_MAP_STYLE);
   }, [isDark]);
 
   // Rebuild markers whenever the visible set changes (keyed by signature).
