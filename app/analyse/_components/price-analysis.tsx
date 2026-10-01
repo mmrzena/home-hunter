@@ -30,6 +30,14 @@ export function PriceAnalysis({ report }: { report: HouseAnalysis }) {
         {formatPerM2(ppm2)}{" "}
         <span className="font-sans">of usable floor area</span>
       </p>
+      {report.landSplit && (
+        <p className="mt-1 font-mono text-sm text-muted-foreground">
+          {report.landSplit.housePpm2 > 0
+            ? formatPerM2(report.landSplit.housePpm2)
+            : "≤ land value"}{" "}
+          <span className="font-sans">for the house alone, plot deducted</span>
+        </p>
+      )}
       {valuation ? (
         <>
           <div className="mt-7 border-t pt-6">

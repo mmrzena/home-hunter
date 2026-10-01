@@ -27,6 +27,8 @@ export type ClusterCard = {
 
   pricePerUsableM2: number | null;
   pricePerLandM2: number | null;
+  /** Asking price minus the plot at local land prices, per usable m². */
+  housePricePerUsableM2: number | null;
   percentile: number | null;
   percentileConfidence: string | null;
   priceBasis: PriceBasis | null;

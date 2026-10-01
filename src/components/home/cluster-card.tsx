@@ -319,6 +319,16 @@ export function ClusterCard({
                   <span className="font-mono">
                     {formatPerM2(card.pricePerUsableM2)}
                   </span>
+                  {card.housePricePerUsableM2 != null && (
+                    <span title="House alone: the asking price minus the plot at local land prices, per usable m²">
+                      {" · house "}
+                      <span className="font-mono">
+                        {card.housePricePerUsableM2 > 0
+                          ? formatPerM2(card.housePricePerUsableM2)
+                          : "≤ land value"}
+                      </span>
+                    </span>
+                  )}
                   {" · "}
                   {card.sellerName ??
                     (card.sellerType === "private" ? "Soukromá osoba" : "—")}

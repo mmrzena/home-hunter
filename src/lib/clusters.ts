@@ -3,6 +3,7 @@ import { anchor, env } from "@/lib/env";
 import { placeInfo } from "@/lib/places";
 import { distanceToPragueKm, nearestStation } from "@/lib/stations";
 import type { ClusterCard, SortKey } from "@/lib/types";
+import { buildingPpm2 } from "../../worker/lib/price-model";
 
 export type ClusterFilters = {
   maxPrice?: number;
@@ -76,6 +77,18 @@ function toCard(row: any): ClusterCard {
     cadastralName: row.cadastral_name,
     pricePerUsableM2: row.price_per_usable_m2,
     pricePerLandM2: row.price_per_land_m2,
+    housePricePerUsableM2:
+      row.price > 0 && row.usable_area_m2 > 0
+        ? buildingPpm2({
+            id: row.listing_id,
+            code: null,
+            band: null,
+            ppm2: row.price / row.usable_area_m2,
+            usable: row.usable_area_m2,
+            land: row.land_area_m2,
+            landPpm2: row.land_price_m2,
+          })
+        : null,
     percentile: row.percentile,
     percentileConfidence: row.percentile_confidence,
     priceBasis: row.price_basis,
@@ -130,7 +143,7 @@ async function selectClusters(
       c.member_count                  AS member_count,
       rep.property_kind, rep.usable_area_m2, rep.land_area_m2, rep.disposition,
       rep.lat, rep.lng, rep.locality_text, rep.cadastral_name,
-      rep.price_per_usable_m2, rep.price_per_land_m2,
+      rep.price_per_usable_m2, rep.price_per_land_m2, rep.land_price_m2,
       rep.percentile, rep.percentile_confidence, rep.price_basis, rep.sample_size,
       rep.deal_verdict, rep.is_good_deal, rep.scam_score,
       rep.scam_reasons, rep.deal_reasons, rep.price_drop_pct,
