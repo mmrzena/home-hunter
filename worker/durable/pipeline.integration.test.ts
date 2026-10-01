@@ -55,11 +55,14 @@ test("durable pipeline commits checkpoints atomically and resumes safely", {
     let shouldFail = true;
     context.mock.method(globalThis, "fetch", async (url: string) => {
       if (url.includes("/search?")) {
-        const region = new URL(url).searchParams.get("locality_region_id");
+        const params = new URL(url).searchParams;
+        const region = params.get("locality_region_id");
+        // The Jičín search returns an advert that is gone by its detail fetch.
+        const isDistrict = params.get("locality_district_id") === "30";
         return Response.json({
           results: [
             {
-              hash_id: region === "10" ? 101 : 102,
+              hash_id: isDistrict ? 103 : region === "10" ? 101 : 102,
               advert_name: "Prodej rodinného domu 120 m²",
               price_czk: 9000000,
               locality: { gps_lat: 50.1, gps_lon: 14.4, city: "Test town" },
@@ -69,6 +72,7 @@ test("durable pipeline commits checkpoints atomically and resumes safely", {
         });
       }
       if (shouldFail) return new Response("temporary failure", { status: 503 });
+      if (url.endsWith("/103")) return new Response("gone", { status: 404 });
       return Response.json({
         result: {
           hash_id: url.endsWith("101") ? 101 : 102,
@@ -108,6 +112,10 @@ test("durable pipeline commits checkpoints atomically and resumes safely", {
     assert.equal(active[0].cluster_id, active[1].cluster_id);
     assert.ok(active.every((row) => row.scored_at !== null));
     assert.equal((await sql`SELECT * FROM clusters`).length, 1);
+    assert.equal(
+      (await sql`SELECT * FROM listings WHERE source_id = '103'`).length,
+      0,
+    );
     assert.ok((await sql`SELECT * FROM land_listings`).length > 0);
     assert.equal(
       (

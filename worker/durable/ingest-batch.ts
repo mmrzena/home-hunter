@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import type { TransactionSql } from "postgres";
 import { env } from "@/lib/env";
+import { HttpError } from "../lib/http";
 import { inRegionBbox } from "../lib/regions";
 import { createBezrealitkySource } from "../sources/bezrealitky";
 import { createCeskeRealitySource } from "../sources/ceskereality";
@@ -104,7 +105,18 @@ export async function ingestBatch(
     if (shouldEnrich) {
       enriched++;
       await sleep(Math.min(env.REQUEST_DELAY_MS, 2_000));
-      const detail = await source.enrich(raw.sourceId, raw.url);
+      let detail: Partial<RawListing>;
+      try {
+        detail = await source.enrich(raw.sourceId, raw.url);
+      } catch (error) {
+        // Removed between the search and its detail page. Retrying can't help;
+        // left unseen, the completed crawl deactivates it.
+        if (error instanceof HttpError && [404, 410].includes(error.status)) {
+          state.itemIndex++;
+          continue;
+        }
+        throw error;
+      }
       if (!Object.values(detail).some((value) => value !== undefined))
         throw new Error(`No detail returned for ${raw.source}/${raw.sourceId}`);
       listing = {
