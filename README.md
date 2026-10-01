@@ -34,7 +34,16 @@ Postgres 16 + PostGIS.
    houses in the same locality, widening to 5 / 15 / 30 km when needed. Match
    property type, usable area (0.67–1.5×) and plot size (0.25–4× when known).
    Exclude the subject and its known duplicates; count each cluster once.
-   Require 8 independent houses, with no country-wide fallback. This gives:
+   Require 8 independent houses, with no country-wide fallback.
+   **Land-adjusted:** when a house's plot size and local land price are known,
+   houses are compared on the house alone,
+   `(asking price − plot m² × local land Kč/m²) ÷ usable m²`, so a big plot
+   doesn't make a fair house look overpriced. The local land price is the median
+   asking Kč/m² of building plots for sale (Sreality "stavební" + Bezrealitky
+   `STAVEBNI`, table `land_listings`) of a similar size (0.5–2× the plot), from
+   the nearest 3 / 7 / 15 / 30 km ring with at least 6. Without a plot size or
+   land price, houses are compared on asking price per usable m². Asking
+   prices under 100 000 Kč ("1 Kč" placeholders) count as unknown. This gives:
    - **Good deal** = low percentile ∧ not suspicious (price drops strengthen it)
    - **Overpriced** = high percentile
    - **Caution** = weighted scam flags with reasons (stolen photos via far-geo

@@ -18,6 +18,11 @@ percentile, scam signals, and distance. See `README.md` for the full picture.
   pipeline`, `worker/index.ts` node-cron) goes through `worker/durable/`:
   small batches that each commit their work + checkpoint
   (`pipeline_runs.state`) in one transaction, so a crash resumes mid-run.
+  Phases: ingest → landIngest (building plots into `land_listings`) → hash →
+  bucket → landPrice (`listings.land_price_m2`, `worker/lib/land-price.ts`) →
+  edges → clusters → score. The price model (`worker/lib/price-model.ts`)
+  compares the house alone (land deducted) when it can, else asking Kč/m²;
+  `listings.price_basis` records which.
 - **Daily cloud run = Vercel Cron → Workflow SDK.** `vercel.json` hits
   `app/api/cron/pipeline` (bearer `CRON_SECRET`, `src/lib/cron-auth.ts`), which
   starts `src/workflows/pipeline.ts` — a loop of `"use step"` calls to

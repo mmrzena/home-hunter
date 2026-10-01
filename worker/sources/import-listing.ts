@@ -7,7 +7,7 @@ import { parseBezrealitkyDetail } from "./bezrealitky";
 import { parseCeskeRealityDetail } from "./ceskereality";
 import { parseRealingoDetail } from "./realingo";
 import { parseSrealityDetail } from "./sreality";
-import type { RawListing } from "./types";
+import { askingPrice, type RawListing } from "./types";
 
 const MAX_BYTES = 5_000_000;
 
@@ -125,6 +125,7 @@ export async function importListing(
   return {
     ...fields,
     ...target,
+    price: askingPrice(fields.price),
     photos: (fields.photos ?? [])
       .filter((photo) => /^https:\/\//i.test(photo))
       .slice(0, 30),

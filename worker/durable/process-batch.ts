@@ -46,7 +46,7 @@ export async function bucketBatch(sql: TransactionSql, state: PipelineState) {
     { id: number }[]
   >`SELECT id::int FROM listings WHERE is_active AND id > ${state.cursor} ORDER BY id LIMIT 500`;
   if (!ids.length) {
-    nextPhase(state, "edges");
+    nextPhase(state, "landPrice");
     return;
   }
   await sql`

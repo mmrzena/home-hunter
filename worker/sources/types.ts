@@ -43,6 +43,18 @@ export type PageOptions = {
   singlePage?: boolean;
 };
 
+/**
+ * Portals use token amounts ("1 Kč", "10 Kč") for price on request. Anything
+ * below this is not a real house price, so it's stored as unknown.
+ */
+export const MIN_ASKING_PRICE = 100_000;
+
+export function askingPrice(price: number | undefined): number | undefined {
+  return price !== undefined && price >= MIN_ASKING_PRICE
+    ? Math.round(price)
+    : undefined;
+}
+
 /** The one search a single-page crawl step covers, or every search for a full crawl. */
 export function searchesFor<T>(
   searches: readonly T[],

@@ -3,6 +3,7 @@ import { sql as defaultSql } from "@/db";
 import { withHttpBudget } from "../lib/http";
 import { score } from "../pipeline/score";
 import { ingestBatch } from "./ingest-batch";
+import { landIngestBatch, landPriceBatch } from "./land-batch";
 import {
   bucketBatch,
   edgeBatch,
@@ -36,11 +37,17 @@ export async function runBatch(
           case "ingest":
             await ingestBatch(sql, state, run.startedAt);
             break;
+          case "landIngest":
+            await landIngestBatch(sql, state, run.startedAt);
+            break;
           case "hash":
             await hashBatch(sql, state);
             break;
           case "bucket":
             await bucketBatch(sql, state);
+            break;
+          case "landPrice":
+            await landPriceBatch(sql, state);
             break;
           case "edges":
             await edgeBatch(sql, state, runId);

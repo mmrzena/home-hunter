@@ -2,6 +2,7 @@ import type { Reason } from "@/db/schema";
 import type { NearbyStation } from "@/lib/stations";
 import type { TrainTrip } from "@/lib/train-times";
 import type { ClusterMember } from "@/lib/types";
+import type { LandPrice } from "../../worker/lib/land-price";
 import type { MarketListing } from "../../worker/lib/market-data";
 import type { ScoreResult } from "../../worker/lib/price-model";
 import type { RawListing } from "../../worker/sources/types";
@@ -29,4 +30,12 @@ export type HouseAnalysis = {
   storedReasons: Reason[];
   descriptionFlag: string | null;
   priceDropPct: number | null;
+  /** Local building-land price for this plot, when enough nearby plots are for sale. */
+  landPrice: LandPrice | null;
+  /** The asking price split into the plot at local land prices and the house. */
+  landSplit: {
+    landValue: number;
+    houseValue: number;
+    housePpm2: number;
+  } | null;
 };

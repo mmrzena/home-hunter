@@ -25,6 +25,7 @@ export type SourceName =
   | "realingo";
 export type BucketSource = "polygon" | "locality";
 export type DealVerdict = "deal" | "fair" | "overpriced";
+export type PriceBasis = "building" | "asking";
 
 /**
  * One normalized listing from one source. Deduped listings keep their own row
@@ -82,6 +83,11 @@ export const listings = pgTable(
     // Assigned during scoring.
     pricePerUsableM2: integer("price_per_usable_m2"),
     pricePerLandM2: integer("price_per_land_m2"),
+    // Local land price per m² for this plot (pipeline land phase).
+    landPriceM2: integer("land_price_m2"),
+    landPriceSample: integer("land_price_sample"),
+    landPriceRadiusKm: integer("land_price_radius_km"),
+    priceBasis: text("price_basis").$type<PriceBasis>(),
     bucketKey: text("bucket_key"),
     percentile: doublePrecision("percentile"),
     percentileConfidence: text("percentile_confidence"),

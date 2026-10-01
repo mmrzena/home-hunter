@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createBezrealitkySource } from "./bezrealitky";
 import { createCeskeRealitySource } from "./ceskereality";
 import { createSrealitySource } from "./sreality";
+import { askingPrice } from "./types";
 
 async function collect(source: ReturnType<typeof createSrealitySource>) {
   const items = [];
@@ -89,4 +90,11 @@ test("České reality completes a search on its last page and walks Jičín", as
     "https://vychodo.ceskereality.cz/prodej/rodinne-domy/dum-1.html",
   );
   assert.equal(source.completed(), true);
+});
+
+test("token prices for 'price on request' are unknown, not bargains", () => {
+  assert.equal(askingPrice(1), undefined);
+  assert.equal(askingPrice(10), undefined);
+  assert.equal(askingPrice(undefined), undefined);
+  assert.equal(askingPrice(4_990_000.4), 4_990_000);
 });

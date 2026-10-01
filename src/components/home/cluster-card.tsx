@@ -293,6 +293,7 @@ export function ClusterCard({
                 <PercentileMeter
                   percentile={card.percentile}
                   confidence={card.percentileConfidence}
+                  isLandAdjusted={card.priceBasis === "building"}
                 />
               </div>
 

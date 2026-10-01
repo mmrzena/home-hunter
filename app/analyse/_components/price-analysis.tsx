@@ -1,13 +1,17 @@
 import { RiInformationLine } from "@remixicon/react";
 import type { HouseAnalysis } from "@/lib/analysis-types";
 import { formatPerM2, formatPrice, formatPriceCompact } from "@/lib/format";
+import { LandBreakdown } from "./land-breakdown";
 
 export function PriceAnalysis({ report }: { report: HouseAnalysis }) {
   const { listing, valuation } = report;
   const area = listing.usableAreaM2 ?? 0;
   const ppm2 = listing.price && area > 0 ? listing.price / area : null;
   const difference =
-    valuation && ppm2 ? (ppm2 / valuation.medianPpm2 - 1) * 100 : null;
+    valuation && listing.price && valuation.medianPrice > 0
+      ? (listing.price / valuation.medianPrice - 1) * 100
+      : null;
+  const isLandAdjusted = valuation?.basis === "building";
   return (
     <section
       className="flex flex-col rounded-2xl border bg-card p-6 sm:p-8"
@@ -49,8 +53,11 @@ export function PriceAnalysis({ report }: { report: HouseAnalysis }) {
                     {Math.abs(difference).toFixed(0)}%{" "}
                     {difference < 0 ? "below" : "above"}
                   </span>{" "}
-                  the median price per m² of {valuation.sampleSize} comparable
-                  houses.
+                  the median benchmark from {valuation.sampleSize} comparable
+                  houses
+                  {isLandAdjusted
+                    ? ", compared on the house alone with the plot priced at local land prices."
+                    : ", compared on asking price per m² of usable area."}
                 </>
               )}
             </p>
@@ -74,15 +81,17 @@ export function PriceAnalysis({ report }: { report: HouseAnalysis }) {
           <div className="mt-7 rounded-xl bg-muted/60 p-4">
             <p className="text-xs text-muted-foreground">
               Middle 50% of comparisons, scaled to {area} m²
+              {isLandAdjusted && " plus this plot"}
             </p>
             <p className="mt-2 font-mono text-lg font-medium">
-              {formatPriceCompact(valuation.lowerPpm2 * area)} –{" "}
-              {formatPriceCompact(valuation.upperPpm2 * area)}
+              {formatPriceCompact(valuation.lowerPrice)} –{" "}
+              {formatPriceCompact(valuation.upperPrice)}
             </p>
             <p className="mt-2 text-xs text-muted-foreground">
-              Median benchmark: {formatPrice(valuation.medianPpm2 * area)}
+              Median benchmark: {formatPrice(valuation.medianPrice)}
             </p>
           </div>
+          <LandBreakdown report={report} />
         </>
       ) : (
         <div className="mt-7 rounded-xl bg-muted/60 p-5">

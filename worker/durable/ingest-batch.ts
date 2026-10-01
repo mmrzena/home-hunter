@@ -5,8 +5,9 @@ import { inRegionBbox } from "../lib/regions";
 import { createBezrealitkySource } from "../sources/bezrealitky";
 import { createCeskeRealitySource } from "../sources/ceskereality";
 import { createSrealitySource } from "../sources/sreality";
-import type { RawListing } from "../sources/types";
-import { nextPhase, type PipelineState } from "./state";
+import { askingPrice, type RawListing } from "../sources/types";
+import { advanceCrawl } from "./crawl";
+import { type PipelineState, startLandIngest } from "./state";
 
 function sourceFor(state: PipelineState) {
   const options = {
@@ -29,7 +30,8 @@ function values(raw: RawListing, startedAt: string) {
     source: raw.source,
     source_id: raw.sourceId,
     property_kind: raw.propertyKind,
-    price: raw.price == null ? undefined : Math.round(raw.price),
+    // A placeholder price overwrites a stored one with "unknown".
+    price: raw.price == null ? undefined : (askingPrice(raw.price) ?? null),
     usable_area_m2:
       raw.usableAreaM2 == null ? undefined : Math.round(raw.usableAreaM2),
     built_up_area_m2:
@@ -63,7 +65,7 @@ export async function ingestBatch(
 ) {
   const source = sourceFor(state);
   if (!source) {
-    nextPhase(state, "hash");
+    startLandIngest(state);
     return;
   }
   if (state.pageItems === null) {
@@ -95,7 +97,9 @@ export async function ingestBatch(
     `;
     const shouldEnrich =
       source.name !== "bezrealitky" &&
-      (!existing || existing.price !== raw.price || existing.usable === null);
+      (!existing ||
+        existing.price !== (askingPrice(raw.price) ?? null) ||
+        existing.usable === null);
     let listing = raw;
     if (shouldEnrich) {
       enriched++;
@@ -123,13 +127,8 @@ export async function ingestBatch(
       >`INSERT INTO listings ${sql(fields)} RETURNING id::int`;
       listingId = created.id;
     }
-    const price = listing.price == null ? null : Math.round(listing.price);
-    if (
-      listingId != null &&
-      price != null &&
-      price > 0 &&
-      (!existing || existing.price !== price)
-    ) {
+    const price = askingPrice(listing.price) ?? null;
+    if (listingId != null && price != null && existing?.price !== price) {
       await sql`INSERT INTO price_history (listing_id, price) VALUES (${listingId}, ${price})`;
     }
     state.itemIndex++;
@@ -139,27 +138,13 @@ export async function ingestBatch(
   if (state.itemIndex < state.pageItems.length) return;
   const isEmpty = state.pageItems.length === 0;
   state.pageItems = null;
-  if (!state.pageComplete && !isEmpty && state.page < state.maxPages) {
-    state.page++;
-    return;
-  }
-  state.sourceComplete &&= state.pageComplete;
-  if (state.regionIndex + 1 < source.searchCount) {
-    state.regionIndex++;
-    state.page = 1;
-    return;
-  }
-  if (state.sourceComplete && state.sourceSeen > 0) {
-    await sql`UPDATE listings SET is_active = false WHERE source = ${source.name}
-      AND is_active AND last_seen_at < ${startedAt}`;
-  } else
-    state.warnings.push(
-      `${source.name}: incomplete or empty crawl; unseen listings were kept active.`,
-    );
-  state.sourceIndex++;
-  state.regionIndex = 0;
-  state.page = 1;
-  state.sourceSeen = 0;
-  state.sourceComplete = true;
-  if (state.sourceIndex >= state.sources.length) nextPhase(state, "hash");
+  await advanceCrawl(sql, state, {
+    table: "listings",
+    source: source.name,
+    searchCount: source.searchCount,
+    hasMorePages: !state.pageComplete && !isEmpty,
+    isSearchComplete: state.pageComplete,
+    startedAt,
+  });
+  if (state.sourceIndex >= state.sources.length) startLandIngest(state);
 }

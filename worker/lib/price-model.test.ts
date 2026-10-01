@@ -110,3 +110,41 @@ test("high confidence requires depth, tight distribution, and known property and
     "low",
   );
 });
+
+test("compares the house alone when plot and land price are known", () => {
+  // Same houses; peers 0–3 sit on big plots, so their asking price per m² is
+  // high only because of the land.
+  const landPpm2 = 5_000;
+  const data = Array.from({ length: 8 }, (_, index) => {
+    const land = index < 4 ? 1_200 : 600;
+    return {
+      ...SUBJECT,
+      id: index + 10,
+      clusterId: index + 10,
+      land,
+      landPpm2,
+      ppm2: 40_000 + (land * landPpm2) / 150,
+    };
+  });
+  const subject = { ...SUBJECT, landPpm2, ppm2: 60_000 };
+  const result = new PriceModel(data).score(subject);
+  assert.equal(result?.basis, "building");
+  // Every peer's house alone is 40 000 Kč/m²; the subject's is 40 000 too.
+  assert.equal(result?.medianPpm2, 40_000);
+  assert.equal(result?.percentile, 50);
+  assert.equal(result?.landValue, 600 * landPpm2);
+  assert.equal(result?.medianPrice, 600 * landPpm2 + 40_000 * 150);
+});
+
+test("falls back to asking price per m² without a land price", () => {
+  const result = new PriceModel(peers()).score(SUBJECT);
+  assert.equal(result?.basis, "asking");
+  assert.equal(result?.landValue, 0);
+  assert.equal(result?.medianPrice, (result?.medianPpm2 ?? 0) * 150);
+});
+
+test("a land-adjusted subject ignores peers without a land price", () => {
+  const withLand = peers(5).map((peer) => ({ ...peer, landPpm2: 5_000 }));
+  const subject = { ...SUBJECT, landPpm2: 5_000 };
+  assert.equal(new PriceModel([...withLand, ...peers(8)]).score(subject), null);
+});

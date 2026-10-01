@@ -31,6 +31,7 @@ type Row = {
   price: string | null;
   usable_area_m2: number | null;
   land_area_m2: number | null;
+  land_price_m2: number | null;
   cadastral_code: string | null;
   size_band: string | null;
   cluster_id: number | null;
@@ -49,7 +50,7 @@ export async function score(
   limit: number | null = null,
 ): Promise<ScoreSummary> {
   const rows = await sql<Row[]>`
-    SELECT id, price, usable_area_m2, land_area_m2, cadastral_code, size_band,
+    SELECT id, price, usable_area_m2, land_area_m2, land_price_m2, cadastral_code, size_band,
            seller_type, has_ico, description, posted_at, cluster_id::int, property_kind, lat, lng
     FROM listings WHERE is_active AND id > ${afterId} ORDER BY id LIMIT ${limit}
   `;
@@ -100,6 +101,7 @@ export async function score(
         kind: row.property_kind,
         usable,
         land: row.land_area_m2,
+        landPpm2: row.land_price_m2,
         lat: row.lat,
         lng: row.lng,
       });
@@ -188,7 +190,7 @@ export async function score(
     if (percentile !== null && percentile <= DEAL_PCT) {
       dealReasons.push({
         code: "low_percentile",
-        label: `Bottom ${Math.round(percentile)}% of CZK/m² among comparable houses`,
+        label: `Bottom ${Math.round(percentile)}% of ${result?.basis === "building" ? "house price per m² (land deducted)" : "CZK/m²"} among comparable houses`,
         weight: 1 - percentile / 100,
       });
     }
@@ -213,6 +215,7 @@ export async function score(
         sample_size = ${result?.sampleSize ?? null},
         bucket_key = ${result?.bucketKey ?? null},
         deal_verdict = ${result?.verdict ?? null},
+        price_basis = ${result?.basis ?? null},
         is_good_deal = ${isGoodDeal},
         scam_score = ${scamScore},
         scam_reasons = ${JSON.stringify(scamReasons)}::jsonb,

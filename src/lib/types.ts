@@ -1,4 +1,4 @@
-import type { Reason } from "@/db/schema";
+import type { PriceBasis, Reason } from "@/db/schema";
 
 export type { Reason };
 
@@ -29,6 +29,7 @@ export type ClusterCard = {
   pricePerLandM2: number | null;
   percentile: number | null;
   percentileConfidence: string | null;
+  priceBasis: PriceBasis | null;
   sampleSize: number | null;
 
   dealVerdict: "deal" | "fair" | "overpriced" | null;

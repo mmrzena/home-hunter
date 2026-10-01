@@ -24,7 +24,11 @@ test("durable pipeline commits checkpoints atomically and resumes safely", {
   // (de)serialization pass-through.
   drizzle(sql);
   try {
-    for (const migration of ["0001_init.sql", "0004_durable_pipeline.sql"]) {
+    for (const migration of [
+      "0001_init.sql",
+      "0004_durable_pipeline.sql",
+      "0005_land_prices.sql",
+    ]) {
       const content = await readFile(
         new URL(`../../src/db/migrations/${migration}`, import.meta.url),
         "utf8",
@@ -104,6 +108,7 @@ test("durable pipeline commits checkpoints atomically and resumes safely", {
     assert.equal(active[0].cluster_id, active[1].cluster_id);
     assert.ok(active.every((row) => row.scored_at !== null));
     assert.equal((await sql`SELECT * FROM clusters`).length, 1);
+    assert.ok((await sql`SELECT * FROM land_listings`).length > 0);
     assert.equal(
       (
         await sql.begin((tx) =>
@@ -136,7 +141,7 @@ test("durable pipeline commits checkpoints atomically and resumes safely", {
     const [capped] = await sql<
       { state: PipelineState }[]
     >`SELECT state FROM pipeline_runs WHERE id = ${cappedId}`;
-    assert.equal(capped.state.phase, "hash");
+    assert.equal(capped.state.phase, "landIngest");
     assert.ok(
       capped.state.warnings.some((warning) => warning.includes("incomplete")),
     );

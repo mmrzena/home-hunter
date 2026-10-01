@@ -10,12 +10,19 @@ import {
 } from "@/lib/stations";
 import { fastestTrainToPrague } from "@/lib/train-times";
 import type { ClusterMember } from "@/lib/types";
+import { estimateLandPrices } from "../../worker/lib/land-price";
 import {
   type ListingTarget,
   parseListingUrl,
 } from "../../worker/lib/listing-url";
 import { getMarketListings } from "../../worker/lib/market-data";
-import { PriceModel, sizeBand } from "../../worker/lib/price-model";
+import {
+  buildingPpm2,
+  landValueOf,
+  PriceModel,
+  type Sample,
+  sizeBand,
+} from "../../worker/lib/price-model";
 import { detectRedPhrase } from "../../worker/lib/red-flags";
 import { importListing } from "../../worker/sources/import-listing";
 
@@ -72,6 +79,8 @@ export async function analyseHouse(
     storedReasons: [],
     descriptionFlag: detectRedPhrase(listing.description ?? null),
     priceDropPct: null,
+    landPrice: null,
+    landSplit: null,
   };
   if (!(listing.price && listing.price > 0))
     result.warnings.push("The listing does not publish an asking price.");
@@ -96,7 +105,8 @@ export async function analyseHouse(
         /* Unsupported original portal; no saved identity to look up. */
       }
     }
-    const [storedRows, market, areas] = await Promise.all([
+    const plot = listing.landAreaM2;
+    const [storedRows, market, areas, landPrices] = await Promise.all([
       sql<
         StoredListing[]
       >`SELECT id::int, cluster_id::int AS "clusterId", first_seen_at AS "firstSeenAt",
@@ -109,7 +119,11 @@ export async function analyseHouse(
         ? sql<{ code: string }[]>`SELECT code FROM areas
         WHERE ST_Covers(geom, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)) ORDER BY code LIMIT 1`
         : Promise.resolve([]),
+      hasCoordinates && plot
+        ? estimateLandPrices(sql, [{ id: -1, lat, lng, plotM2: plot }])
+        : Promise.resolve(new Map()),
     ]);
+    result.landPrice = landPrices.get(-1) ?? null;
     const stored = storedRows[0];
     if (stored) {
       result.firstSeenAt = stored.firstSeenAt;
@@ -138,7 +152,7 @@ export async function analyseHouse(
       listing.usableAreaM2 &&
       listing.usableAreaM2 > 0
     ) {
-      result.valuation = new PriceModel(market).score({
+      const subject: Sample = {
         id: stored?.id ?? -1,
         clusterId: stored?.clusterId,
         code:
@@ -148,10 +162,20 @@ export async function analyseHouse(
         ppm2: listing.price / listing.usableAreaM2,
         usable: listing.usableAreaM2,
         land: listing.landAreaM2,
+        landPpm2: result.landPrice?.ppm2,
         kind: listing.propertyKind,
         lat: listing.lat,
         lng: listing.lng,
-      });
+      };
+      result.valuation = new PriceModel(market).score(subject);
+      const landValue = landValueOf(subject);
+      const housePpm2 = buildingPpm2(subject);
+      if (landValue !== null && housePpm2 !== null)
+        result.landSplit = {
+          landValue,
+          houseValue: listing.price - landValue,
+          housePpm2,
+        };
       const ids = new Set(result.valuation?.comparableIds ?? []);
       result.comparables = market
         .filter((peer) => ids.has(peer.id))

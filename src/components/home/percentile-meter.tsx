@@ -3,18 +3,20 @@ import { cn } from "@/lib/utils";
 
 /**
  * The card's signature: where this listing's CZK/m² sits among comparable
- * houses in its area. Green (cheap) → grey → amber (pricey), with a marker at
- * the within-bucket percentile. The reading is tone-colored so a deal's number
+ * houses in its area (the house alone when land-adjusted). Green (cheap) →
+ * grey → amber (pricey), with a marker at the within-bucket percentile. The reading is tone-colored so a deal's number
  * looks like a deal; `left` is the one genuinely dynamic value, so it stays inline.
  */
 export function PercentileMeter({
   percentile,
   confidence,
   sampleSize,
+  isLandAdjusted = false,
 }: {
   percentile: number | null;
   confidence?: string | null;
   sampleSize?: number | null;
+  isLandAdjusted?: boolean;
 }) {
   if (percentile == null) {
     return (
@@ -26,7 +28,9 @@ export function PercentileMeter({
   return (
     <div className="space-y-1">
       <div className="flex items-baseline justify-between text-xs">
-        <span className="text-muted-foreground">Price vs area</span>
+        <span className="text-muted-foreground">
+          Price vs area{isLandAdjusted && " · land-adj."}
+        </span>
         <span className={cn("font-mono font-semibold", TONE_TEXT[tone])}>
           {pct}
           <span className="text-[10px] font-normal">th pct</span>
