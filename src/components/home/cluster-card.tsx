@@ -182,7 +182,7 @@ export const ClusterCard = memo(function ClusterCard({
             onClick={() => onSelect(card.clusterId)}
             onMouseEnter={() => onHover(card.clusterId)}
             onMouseLeave={() => onHover(null)}
-            className="flex flex-1 gap-3 rounded-lg p-3 text-left outline-none"
+            className="flex min-w-0 flex-1 gap-3 rounded-lg p-3 text-left outline-none"
           >
             {card.photo ? (
               // biome-ignore lint/performance/noImgElement: hot-linked CDN thumbnail, not bundled

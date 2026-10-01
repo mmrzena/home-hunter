@@ -20,8 +20,6 @@ export type ClusterFilters = {
   /** Max straight-line km to the listing's hub (Prague, or Jičín in okres Jičín). */
   maxHubKm?: number;
   kind?: string;
-  /** Only clusters first seen after this instant (ms epoch) — the "since last visit" filter. */
-  addedAfter?: number;
   sort?: SortKey;
   limit?: number;
 };
@@ -215,10 +213,6 @@ export async function getClusters(
   if (filters.freshOnly)
     conds.push(
       sql`rep.first_seen_at > now() - make_interval(hours => ${env.FEED_WINDOW_HOURS})`,
-    );
-  if (filters.addedAfter != null)
-    conds.push(
-      sql`rep.first_seen_at > to_timestamp(${filters.addedAfter}::float8 / 1000.0)`,
     );
 
   let where = conds[0];

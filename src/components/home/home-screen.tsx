@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  RiCloseLine,
   RiHeart3Fill,
   RiHome4Line,
   RiKeyboardLine,
@@ -15,22 +16,23 @@ import { useCallback, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { markFeedSeen, sinceLabel, useFeedSeen } from "@/lib/feed-seen";
 import { fetchJson } from "@/lib/fetch-json";
 import { TONE_DOT, type Tone } from "@/lib/listing-status";
+import { isInBounds, type MapBounds } from "@/lib/map-bounds";
 import { type TriageView, triageStore, useTriage } from "@/lib/triage-store";
 import type { AppConfig, ClusterCard } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 import { ClusterCard as Card } from "./cluster-card";
-import { FeedSeenSync } from "./feed-seen-sync";
 import { FilterBar } from "./filter-bar";
 import { FilterPrefsSync } from "./filter-prefs-sync";
 import { ShortcutsDialog } from "./shortcuts-dialog";
@@ -99,10 +101,13 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   const [helpOpen, setHelpOpen] = useState(false);
   // Mobile shows one pane at a time (toggled below); desktop shows both split.
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
+  // "Only in view": the feed follows the map viewport. The markers keep
+  // showing the whole set so panning can bring houses back.
+  const [isOnlyInView, setIsOnlyInView] = useState(false);
+  const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
   const isDesktop = useIsDesktop();
 
   const { liked, hidden } = useTriage();
-  const seenThrough = useFeedSeen();
   // Liked is the one filter-agnostic collection (always visible), so its count
   // is the whole set. Seen now respects the filter, so its count is derived
   // from the filtered feed below.
@@ -135,23 +140,10 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     staleTime: 5 * 60_000,
   });
 
-  // The "New since last visit" toggle is a URL boolean; the catch-up mark it
-  // filters by lives client-side, so we resolve it into a concrete addedAfter
-  // timestamp here (live, so the feed tracks a catch-up). Folded into the query
-  // key too, so advancing the mark refetches.
-  const effectiveQuery = useMemo(() => {
-    const params = new URLSearchParams(query);
-    if (params.get("sinceVisit") === "1") {
-      params.delete("sinceVisit");
-      if (seenThrough != null) params.set("addedAfter", String(seenThrough));
-    }
-    return params.toString();
-  }, [query, seenThrough]);
-
   const clusters = useQuery({
-    queryKey: ["clusters", effectiveQuery],
+    queryKey: ["clusters", query],
     queryFn: () =>
-      fetchJson<{ clusters: ClusterCard[] }>(`/api/clusters?${effectiveQuery}`),
+      fetchJson<{ clusters: ClusterCard[] }>(`/api/clusters?${query}`),
     select: (data) => data.clusters,
   });
 
@@ -226,6 +218,15 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
         : effectiveView === "unliked"
           ? unlikedList
           : feedCards;
+  // What the list (and keyboard nav) shows: the tab's cards, narrowed to the
+  // map viewport when "only in view" is on. Without bounds yet, everything.
+  const listed =
+    isOnlyInView && mapBounds
+      ? visible.filter((card) => isInBounds(card, mapBounds))
+      : visible;
+  const inViewCount = mapBounds
+    ? visible.filter((card) => isInBounds(card, mapBounds)).length
+    : visible.length;
 
   // The All + Seen tab counts (filter-scoped) and the header total. The total is
   // the sum of the three persistent tabs, so it stays put as you switch them
@@ -233,16 +234,6 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   const allCount = feedCards.length;
   const hiddenCount = seenCards.length;
   const totalCount = allCount + likedCount + hiddenCount;
-
-  // Untriaged arrivals since you last caught up — the reason to come back. A
-  // null mark (pre-hydration / SSR) means nothing is "new" yet, so the badge
-  // hides until the client knows the real high-water mark.
-  const newCount =
-    seenThrough == null
-      ? 0
-      : feedCards.filter(
-          (card) => new Date(card.firstSeenAt).getTime() > seenThrough,
-        ).length;
 
   // Toggle like, capturing the card into the session Unliked set on remove
   // (and dropping it on re-like) so an off-filter house stays recoverable.
@@ -265,7 +256,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   );
 
   useKeyboardNav({
-    ids: visible.map((card) => card.clusterId),
+    ids: listed.map((card) => card.clusterId),
     selectedId,
     onSelect: selectAndScroll,
     onOpenDetail: handleToggleExpand,
@@ -331,6 +322,18 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
             Restore all
           </Button>
         )}
+        {isOnlyInView && (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="ml-auto h-8 gap-1 text-xs"
+            title="Showing only houses inside the map view"
+            onClick={() => setIsOnlyInView(false)}
+          >
+            <RiMap2Line className="size-3.5" /> {listed.length} in view
+            <RiCloseLine className="size-3.5" />
+          </Button>
+        )}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3 max-lg:pb-20">
@@ -342,10 +345,20 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
           <p className="p-4 text-sm text-destructive">
             Couldn't load listings. Is the worker pipeline run and the DB up?
           </p>
-        ) : visible.length === 0 ? (
-          <EmptyState view={effectiveView} hasCards={cards.length > 0} />
+        ) : listed.length === 0 ? (
+          isOnlyInView && visible.length > 0 ? (
+            <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
+              <RiMap2Line className="size-6" />
+              <p className="text-sm">
+                No houses inside the map view. Pan or zoom out, or turn off
+                "Only in view".
+              </p>
+            </div>
+          ) : (
+            <EmptyState view={effectiveView} hasCards={cards.length > 0} />
+          )
         ) : (
-          visible.map((card) => (
+          listed.map((card) => (
             <Card
               key={card.clusterId}
               card={card}
@@ -373,8 +386,19 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
         selectedId={selectedId}
         hoveredId={hoveredId}
         onSelect={selectAndScroll}
+        onBoundsChange={setMapBounds}
+        fitKey={`${query}|${effectiveView}`}
         anchor={anchor}
       />
+      <Label className="absolute top-2 left-2 flex items-center gap-2 rounded-md border bg-background/90 px-2.5 py-1.5 text-xs font-normal shadow-sm backdrop-blur">
+        <Switch
+          checked={isOnlyInView}
+          onCheckedChange={setIsOnlyInView}
+          aria-label="Only show houses inside the map view"
+        />
+        Only in view
+        <span className="font-mono text-muted-foreground">{inViewCount}</span>
+      </Label>
       <div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 rounded-md border bg-background/90 p-2 text-xs shadow-sm backdrop-blur">
         {LEGEND.map((item) => (
           <span key={item.tone} className="flex items-center gap-1.5">
@@ -391,7 +415,6 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   return (
     <div className="flex h-screen flex-col">
       {authEnabled && <TriageSync />}
-      {authEnabled && <FeedSeenSync />}
       {authEnabled && <FilterPrefsSync />}
       <AppHeader
         active="listings"
@@ -421,21 +444,9 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
           </>
         }
       >
-        <div className="flex flex-wrap items-center gap-1.5 text-sm">
-          <span className="font-mono text-muted-foreground">
-            {clusters.isLoading ? "loading…" : `${totalCount} listings`}
-          </span>
-          {newCount > 0 && seenThrough != null && (
-            <button
-              type="button"
-              onClick={() => markFeedSeen()}
-              title="Mark these as seen"
-              className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-xs font-medium text-primary transition-colors hover:bg-primary/20"
-            >
-              {newCount} new since {sinceLabel(seenThrough)}
-            </button>
-          )}
-        </div>
+        <span className="font-mono text-sm text-muted-foreground">
+          {clusters.isLoading ? "loading…" : `${totalCount} listings`}
+        </span>
       </AppHeader>
 
       <FilterBar config={config.data} />

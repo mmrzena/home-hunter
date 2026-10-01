@@ -7,6 +7,7 @@ import { useTheme } from "next-themes";
 import { useEffect, useRef, useState } from "react";
 
 import { markerTone, TONE_HEX } from "@/lib/listing-status";
+import type { MapBounds } from "@/lib/map-bounds";
 import { DARK_MAP_STYLE, LIGHT_MAP_STYLE } from "@/lib/map-styles";
 import type { AppConfig, ClusterCard } from "@/lib/types";
 
@@ -17,12 +18,19 @@ export function ListingMap({
   selectedId,
   hoveredId,
   onSelect,
+  onBoundsChange,
+  fitKey,
   anchor,
 }: {
   clusters: ClusterCard[];
   selectedId: number | null;
   hoveredId: number | null;
   onSelect: (id: number) => void;
+  /** Fires after every pan / zoom with the new viewport. */
+  onBoundsChange: (bounds: MapBounds) => void;
+  /** The map re-fits to all markers only when this changes (filters, tab) —
+   *  never when a card merely leaves the list, so your zoom stays put. */
+  fitKey: string;
   anchor: AppConfig["anchor"];
 }) {
   const { resolvedTheme } = useTheme();
@@ -35,6 +43,9 @@ export function ListingMap({
   const markersRef = useRef<Map<number, maplibregl.Marker>>(new Map());
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const onBoundsChangeRef = useRef(onBoundsChange);
+  onBoundsChangeRef.current = onBoundsChange;
+  const lastFitKey = useRef<string | null>(null);
   // MapLibre needs WebGL; some machines (GPU blocklists, headless, locked-down
   // VMs) can't provide it. Rather than crash the whole screen, fall back to a
   // placeholder and let the feed carry on.
@@ -66,6 +77,15 @@ export function ListingMap({
       return;
     }
     map.addControl(new maplibregl.NavigationControl(), "top-right");
+    map.on("moveend", () => {
+      const bounds = map.getBounds();
+      onBoundsChangeRef.current([
+        bounds.getWest(),
+        bounds.getSouth(),
+        bounds.getEast(),
+        bounds.getNorth(),
+      ]);
+    });
     mapRef.current = map;
     // The map lives in a resizable panel; MapLibre only tracks window resizes,
     // so observe the container and resize the canvas when the divider moves.
@@ -128,8 +148,11 @@ export function ListingMap({
       any = true;
     }
 
-    if (any) map.fitBounds(bounds, { padding: 56, maxZoom: 13, duration: 0 });
-  }, [markerSignature, anchor]);
+    if (any && lastFitKey.current !== fitKey) {
+      lastFitKey.current = fitKey;
+      map.fitBounds(bounds, { padding: 56, maxZoom: 13, duration: 0 });
+    }
+  }, [markerSignature, anchor, fitKey]);
 
   // Style markers for selection (purple outline) and hover (faint outline) —
   // without rebuilding them. `clusters` is a real dependency: the rebuild effect
