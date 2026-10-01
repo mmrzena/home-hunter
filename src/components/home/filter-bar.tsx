@@ -14,7 +14,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -25,6 +24,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { formatSource } from "@/lib/format";
 import type { AppConfig } from "@/lib/types";
+import { AreaFilter } from "./area-filter";
 
 const SORTS = [
   { value: "newest", label: "Newest" },
@@ -230,39 +230,16 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
       )}
 
       {show("areas") && (
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8">
-              Areas
-              {selectedAreas.length > 0 && (
-                <Badge variant="secondary">{selectedAreas.length}</Badge>
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-72 p-0" align="start">
-            <ScrollArea className="h-72">
-              <div className="space-y-1 p-2">
-                {config?.areas.map((area) => (
-                  <Label
-                    key={area.code}
-                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm font-normal hover:bg-muted"
-                  >
-                    <Checkbox
-                      checked={selectedAreas.includes(area.code)}
-                      onCheckedChange={(checked) =>
-                        toggleMulti("area", area.code, checked === true)
-                      }
-                    />
-                    <span className="flex-1 truncate">{area.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {area.count}
-                    </span>
-                  </Label>
-                ))}
-              </div>
-            </ScrollArea>
-          </PopoverContent>
-        </Popover>
+        <AreaFilter
+          areas={config?.areas ?? []}
+          selected={selectedAreas}
+          onToggle={(code, isChecked) => toggleMulti("area", code, isChecked)}
+          onClear={() => {
+            const next = new URLSearchParams(params);
+            next.delete("area");
+            commit(next);
+          }}
+        />
       )}
 
       {show("source") && (
