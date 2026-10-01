@@ -4,13 +4,17 @@ import type { Database } from "./database";
  * Local building-land price for a house's plot: the median price per m² of
  * building plots for sale nearby, taking the smallest ring with enough of them.
  * Plots are size-matched (0.5–2× the house's plot) because price per m² falls
- * steeply with plot size.
+ * steeply with plot size. Implausible asking prices per m² (mislabelled
+ * farmland, rent-like amounts, tiny development parcels) are left out, and a
+ * plot listed on several portals counts once.
  */
 const RADII_KM = [3, 7, 15, 30];
 const MAX_RADIUS_KM = RADII_KM[RADII_KM.length - 1];
 const MIN_LAND_SAMPLES = 6;
 const MIN_PLOT_M2 = 300;
 const MAX_PLOT_M2 = 10_000;
+const MIN_PLOT_PPM2 = 300;
+const MAX_PLOT_PPM2 = 60_000;
 
 export type LandPrice = { ppm2: number; sample: number; radiusKm: number };
 export type LandPoint = {
@@ -39,11 +43,13 @@ export async function estimateLandPrices(
         percentile_cont(0.5) WITHIN GROUP (ORDER BY plot.ppm2) AS ppm2,
         count(*) AS sample
       FROM (
-        SELECT land.price::float8 / land.area_m2 AS ppm2,
+        SELECT DISTINCT ON (round(land.lat::numeric, 4), round(land.lng::numeric, 4), land.area_m2)
+          land.price::float8 / land.area_m2 AS ppm2,
           ST_Distance(land.geom::geography,
             ST_SetSRID(ST_MakePoint(point.lng, point.lat), 4326)::geography) / 1000 AS km
         FROM land_listings land
         WHERE land.is_active AND land.price > 0
+          AND land.price::float8 / land.area_m2 BETWEEN ${MIN_PLOT_PPM2} AND ${MAX_PLOT_PPM2}
           AND land.last_seen_at >= now() - interval '90 days'
           AND land.area_m2 BETWEEN greatest(${MIN_PLOT_M2}, point.plot * 0.5)
             AND least(${MAX_PLOT_M2}, greatest(${MIN_PLOT_M2} * 2, point.plot * 2))

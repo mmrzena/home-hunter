@@ -14,6 +14,8 @@ export function LandBreakdown({ report }: { report: HouseAnalysis }) {
     );
   }
   const isBelowLand = landSplit.houseValue <= 0;
+  const landShare = landSplit.landValue / (listing.price ?? 1);
+  const isLandDominated = !isBelowLand && landShare > 0.7;
   const source = `${landPrice.sample} building plots of a similar size for sale within ${landPrice.radiusKm} km`;
   const rows = [
     [
@@ -41,6 +43,8 @@ export function LandBreakdown({ report }: { report: HouseAnalysis }) {
         {isBelowLand
           ? `The asking price is below the estimated land value (median of ${source}): you'd be paying about land price for the plot.`
           : `Land price is the median of ${source}.`}
+        {isLandDominated &&
+          ` Land is ${Math.round(landShare * 100)}% of the asking price, so the house-alone figure is sensitive to that estimate; treat the comparison as low confidence.`}
       </p>
     </div>
   );

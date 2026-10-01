@@ -2,6 +2,8 @@ import type { PriceBasis } from "@/db/schema";
 import { haversineKm } from "@/lib/stations";
 
 export const MIN_SAMPLES = 8;
+/** Above this share of the asking price, the house-alone figure is a small residual. */
+export const LAND_DOMINATED_SHARE = 0.7;
 
 export type Sample = {
   id: number;
@@ -32,6 +34,8 @@ export type ScoreResult = {
   upperPpm2: number;
   /** The subject's plot at local land prices; 0 on the asking basis. */
   landValue: number;
+  /** landValue as a fraction of the asking price; 0 on the asking basis. */
+  landShare: number;
   /** Middle-50% and median benchmarks as whole-house asking prices. */
   lowerPrice: number;
   medianPrice: number;
@@ -145,6 +149,7 @@ export class PriceModel {
     const upperPpm2 = quantile(sorted, 0.75);
     const usable = subject.usable ?? 0;
     const landValue = basis === "building" ? (landValueOf(subject) ?? 0) : 0;
+    const landShare = landValue / (subject.ppm2 * usable);
     const lowerPrice = landValue + lowerPpm2 * usable;
     const medianPrice = landValue + medianPpm2 * usable;
     const upperPrice = landValue + upperPpm2 * usable;
@@ -160,7 +165,8 @@ export class PriceModel {
         subject.land &&
         chosen.peers.every(({ peer }) => Boolean(peer.land)) &&
         medianPrice > 0 &&
-        (upperPrice - lowerPrice) / medianPrice <= 0.5
+        (upperPrice - lowerPrice) / medianPrice <= 0.5 &&
+        landShare <= LAND_DOMINATED_SHARE
           ? "high"
           : "low",
       bucketKey: chosen.key,
@@ -170,6 +176,7 @@ export class PriceModel {
       medianPpm2,
       upperPpm2,
       landValue,
+      landShare,
       lowerPrice,
       medianPrice,
       upperPrice,

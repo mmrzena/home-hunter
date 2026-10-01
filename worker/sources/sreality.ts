@@ -266,7 +266,8 @@ export function parseSrealityDetail(
   };
   out.description = stripHtml(detail.advert_description);
   out.usableAreaM2 = toNumber(detail.usable_area);
-  out.landAreaM2 = toNumber(detail.estate_area ?? detail.garden_area);
+  // No garden_area fallback: a garden is smaller than the plot and would undervalue the land.
+  out.landAreaM2 = toNumber(detail.estate_area);
   out.builtUpAreaM2 = toNumber(detail.building_area ?? detail.floor_area);
 
   const rooms = asRecord(detail.room_count_cb)?.name;

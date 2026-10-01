@@ -3,7 +3,11 @@ import type { Reason } from "@/db/schema";
 
 import type { Database } from "../lib/database";
 import { getMarketListings } from "../lib/market-data";
-import { PriceModel, type Sample } from "../lib/price-model";
+import {
+  LAND_DOMINATED_SHARE,
+  PriceModel,
+  type Sample,
+} from "../lib/price-model";
 import { detectRedPhrase } from "../lib/red-flags";
 
 export type ScoreSummary = {
@@ -190,7 +194,10 @@ export async function score(
     if (percentile !== null && percentile <= DEAL_PCT) {
       dealReasons.push({
         code: "low_percentile",
-        label: `Bottom ${Math.round(percentile)}% of ${result?.basis === "building" ? "house price per m² (land deducted)" : "CZK/m²"} among comparable houses`,
+        label:
+          result && result.landShare > LAND_DOMINATED_SHARE
+            ? `Asking price is close to land value (plot ≈ ${Math.round(result.landShare * 100)}% of it): a land play, not a cheap house`
+            : `Bottom ${Math.round(percentile)}% of ${result?.basis === "building" ? "house price per m² (land deducted)" : "CZK/m²"} among comparable houses`,
         weight: 1 - percentile / 100,
       });
     }

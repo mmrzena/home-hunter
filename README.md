@@ -40,8 +40,12 @@ Postgres 16 + PostGIS.
    `(asking price − plot m² × local land Kč/m²) ÷ usable m²`, so a big plot
    doesn't make a fair house look overpriced. The local land price is the median
    asking Kč/m² of building plots for sale (Sreality "stavební" + Bezrealitky
-   `STAVEBNI`, table `land_listings`) of a similar size (0.5–2× the plot), from
-   the nearest 3 / 7 / 15 / 30 km ring with at least 6. Without a plot size or
+   `STAVEBNI`, table `land_listings`) of a similar size (0.5–2× the plot, min
+   300 m²), priced 300–60 000 Kč/m² (drops mislabelled farmland and tiny
+   development parcels), one vote per plot across portals, from the nearest
+   3 / 7 / 15 / 30 km ring with at least 6. When the plot is over 70% of the
+   asking price the house-alone figure is a small residual, so the verdict is
+   low-confidence and a "deal" reads as a land play. Without a plot size or
    land price, houses are compared on asking price per usable m². Asking
    prices under 100 000 Kč ("1 Kč" placeholders) count as unknown. This gives:
    - **Good deal** = low percentile ∧ not suspicious (price drops strengthen it)

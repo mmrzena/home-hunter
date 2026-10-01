@@ -148,3 +148,29 @@ test("a land-adjusted subject ignores peers without a land price", () => {
   const subject = { ...SUBJECT, landPpm2: 5_000 };
   assert.equal(new PriceModel([...withLand, ...peers(8)]).score(subject), null);
 });
+
+test("a land-dominated house reports its land share and stays low confidence", () => {
+  const landPpm2 = 5_000;
+  const data = Array.from({ length: 24 }, (_, index) => ({
+    ...SUBJECT,
+    id: index + 10,
+    clusterId: index + 10,
+    landPpm2,
+    ppm2: 40_000 + index * 200 + (600 * landPpm2) / 150,
+  }));
+  // 600 m² × 5 000 = 3 mil. of a 3.75 mil. asking price (ppm2 25 000 × 150).
+  const subject = { ...SUBJECT, landPpm2, ppm2: 25_000 };
+  const result = new PriceModel(data).score(subject);
+  assert.equal(result?.basis, "building");
+  assert.equal(result?.landShare, 0.8);
+  assert.equal(result?.confidence, "low");
+  // The same spread with land at 40% of the price is allowed to be high confidence.
+  const cheapLand = new PriceModel(
+    data.map((peer) => ({
+      ...peer,
+      landPpm2: 1_000,
+      ppm2: peer.ppm2 - (600 * 4_000) / 150,
+    })),
+  ).score({ ...subject, landPpm2: 1_000, ppm2: 10_000 });
+  assert.equal(cheapLand?.confidence, "high");
+});
