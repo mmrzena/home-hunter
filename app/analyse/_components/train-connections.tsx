@@ -1,6 +1,7 @@
 import { RiTrainLine } from "@remixicon/react";
 import type { HouseAnalysis } from "@/lib/analysis-types";
 import { formatDistance, formatDuration, formatTransfers } from "@/lib/format";
+import { HUBS } from "@/lib/hubs";
 import { LocationMap } from "./location-map";
 
 const TIME = new Intl.DateTimeFormat("en-GB", {
@@ -25,28 +26,33 @@ function fastestOf(stations: Stations): Stations[number] | null {
 export function TrainConnections({
   house,
   stations,
-  pragueKm,
+  hub,
 }: {
   house: { lat: number; lng: number };
   stations: Stations;
-  pragueKm: number | null;
+  hub: HouseAnalysis["location"]["hub"];
 }) {
+  const town = HUBS[hub?.key ?? "prague"];
+  const destination = town.station.name;
   const fastest = fastestOf(stations);
+  const atHubStation = stations.find((station) => station.name === destination);
   const summary = fastest?.train
-    ? `Fastest weekday-morning train to Praha hl.n.: ${formatDuration(fastest.train.minutes)} from ${fastest.name}, ${formatDistance(fastest.km)} from the house.`
-    : "No train connection to Praha hl.n. was found from the nearest stations.";
+    ? `Fastest weekday-morning train to ${destination}: ${formatDuration(fastest.train.minutes)} from ${fastest.name}, ${formatDistance(fastest.km)} from the house.`
+    : atHubStation
+      ? `The house is in ${town.label} itself: ${destination} station is ${formatDistance(atHubStation.km)} away.`
+      : `No train connection to ${destination} was found from the nearest stations.`;
   return (
     <section className="overflow-hidden rounded-2xl border">
       <div className="flex flex-wrap items-start justify-between gap-4 p-6 sm:p-8">
         <div>
-          <h3 className="text-lg font-semibold">Getting to Prague</h3>
+          <h3 className="text-lg font-semibold">Getting to {town.label}</h3>
           <p className="mt-1 text-sm text-muted-foreground">{summary}</p>
         </div>
         <div className="text-right">
           <p className="text-xs text-muted-foreground">
-            Prague centre, straight line
+            {town.label} centre, straight line
           </p>
-          <p className="mt-1 font-mono text-lg">{formatDistance(pragueKm)}</p>
+          <p className="mt-1 font-mono text-lg">{formatDistance(hub?.km)}</p>
         </div>
       </div>
       <div className="grid border-t lg:grid-cols-[1.4fr_1fr]">
@@ -101,7 +107,9 @@ export function TrainConnections({
                   </div>
                 ) : (
                   <p className="shrink-0 text-xs text-muted-foreground">
-                    No train found
+                    {station.name === destination
+                      ? "Destination station"
+                      : "No train found"}
                   </p>
                 )}
               </li>

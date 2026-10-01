@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 
 import { useSession } from "@/lib/auth-client";
@@ -33,6 +33,7 @@ async function putFeedSeen(seenAt: number): Promise<void> {
 export function FeedSeenSync() {
   const { data: session } = useSession();
   const isSignedIn = Boolean(session?.user);
+  const queryClient = useQueryClient();
 
   const snapshot = useQuery({
     queryKey: ["feed-seen"],
@@ -44,6 +45,11 @@ export function FeedSeenSync() {
   const mutation = useMutation({
     mutationFn: putFeedSeen,
     meta: { errorMessage: "Couldn't sync your feed mark." },
+    // Keep the cached mark current: this component remounts on every visit to
+    // the feed and reconnects from the cache.
+    onMutate: (seenAt) => {
+      queryClient.setQueryData(["feed-seen"], seenAt);
+    },
     // On failure, re-pull the server truth so optimistic state can't drift.
     onError: () => {
       void snapshot.refetch();

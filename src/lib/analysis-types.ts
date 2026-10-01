@@ -1,4 +1,5 @@
 import type { Reason } from "@/db/schema";
+import type { HubDistance } from "@/lib/hubs";
 import type { NearbyStation } from "@/lib/stations";
 import type { TrainTrip } from "@/lib/train-times";
 import type { ClusterMember } from "@/lib/types";
@@ -14,8 +15,9 @@ export type HouseAnalysis = {
   comparables: MarketListing[];
   warnings: string[];
   location: {
-    pragueKm: number | null;
-    /** Closest stations, nearest first, each with its fastest morning train to Prague. */
+    /** The town the house is lived from: Prague, or Jičín in okres Jičín. */
+    hub: HubDistance | null;
+    /** Closest stations, nearest first, each with its fastest morning train to the hub. */
     stations: (NearbyStation & { train: TrainTrip | null })[];
     population: number | null;
     settlementClass: string | null;

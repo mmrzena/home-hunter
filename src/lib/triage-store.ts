@@ -163,6 +163,10 @@ export const triageStore = {
   connect(snapshot: TriageSnapshot, pusher: (op: TriageOp) => void) {
     mode = "remote";
     push = pusher;
+    triageStore.adopt(snapshot);
+  },
+  /** Replace the in-memory state with a fresh server snapshot (remote mode). */
+  adopt(snapshot: TriageSnapshot) {
     state = {
       liked: new Set(snapshot.shortlist),
       hidden: new Set(snapshot.seen),

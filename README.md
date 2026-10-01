@@ -62,9 +62,11 @@ asking-price comparison, all comparable listings, location, seller, description,
 and any existing price history or cross-portal matches. The original feed stays
 at `/`, with navigation between the two pages.
 
-- **Getting to Prague:** a map of the house and its 3 nearest railway stations,
-  each with the fastest weekday-morning train (06:00–09:00) to Praha hl.n.,
-  its changes and lines. Times come from the free [Transitous](https://transitous.org)
+- **Getting to Prague / Jičín:** a map of the house and its 3 nearest railway
+  stations, each with the fastest weekday-morning train (06:00–09:00), its
+  changes and lines, to Praha hl.n. — or to Jičín for a house in okres Jičín,
+  where every distance and train time is measured against Jičín instead
+  (`src/lib/hubs.ts`). Times come from the free [Transitous](https://transitous.org)
   router, fetched on demand; if it's unreachable the report just shows no train.
 - Uses the same price model as the scoring worker. The displayed range is the
   middle 50% of comparable asking prices per m², scaled to the subject's usable

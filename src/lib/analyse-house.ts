@@ -2,13 +2,11 @@ import { sql } from "@/db";
 import type { Reason } from "@/db/schema";
 import type { HouseAnalysis } from "@/lib/analysis-types";
 import { anchor } from "@/lib/env";
+import { haversineKm } from "@/lib/geo";
+import { HUBS, nearestHub } from "@/lib/hubs";
 import { placeInfo } from "@/lib/places";
-import {
-  distanceToPragueKm,
-  haversineKm,
-  nearestStations,
-} from "@/lib/stations";
-import { fastestTrainToPrague } from "@/lib/train-times";
+import { nearestStations } from "@/lib/stations";
+import { fastestTrain } from "@/lib/train-times";
 import type { ClusterMember } from "@/lib/types";
 import { estimateLandPrices } from "../../worker/lib/land-price";
 import {
@@ -53,8 +51,17 @@ export async function analyseHouse(
   const stations = hasCoordinates
     ? nearestStations(lat, lng, STATION_COUNT)
     : [];
-  // Runs alongside the market lookups below; it never throws.
-  const trainTrips = Promise.all(stations.map(fastestTrainToPrague));
+  const hub = hasCoordinates ? nearestHub(lat, lng) : null;
+  const hubStation = hub ? HUBS[hub.key].station : HUBS.prague.station;
+  // Runs alongside the market lookups below; it never throws. The hub's own
+  // station needs no train, so it is skipped rather than asked for a 0-min trip.
+  const trainTrips = Promise.all(
+    stations.map((station) =>
+      station.name === hubStation.name
+        ? Promise.resolve(null)
+        : fastestTrain(station, hubStation),
+    ),
+  );
   const result: HouseAnalysis = {
     listing: { ...listing, postedAt: postedAt?.toISOString() },
     fetchedAt: new Date().toISOString(),
@@ -62,7 +69,7 @@ export async function analyseHouse(
     comparables: [],
     warnings: [],
     location: {
-      pragueKm: hasCoordinates ? distanceToPragueKm(lat, lng) : null,
+      hub,
       stations: [],
       ...place,
       anchorKm:

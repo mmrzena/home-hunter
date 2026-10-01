@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { ClusterCard as Card } from "./cluster-card";
 import { FeedSeenSync } from "./feed-seen-sync";
 import { FilterBar } from "./filter-bar";
+import { FilterPrefsSync } from "./filter-prefs-sync";
 import { ShortcutsDialog } from "./shortcuts-dialog";
 import { TriageSync } from "./triage-sync";
 import { useIsDesktop } from "./use-is-desktop";
@@ -391,6 +392,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     <div className="flex h-screen flex-col">
       {authEnabled && <TriageSync />}
       {authEnabled && <FeedSeenSync />}
+      {authEnabled && <FilterPrefsSync />}
       <AppHeader
         active="listings"
         isAuthEnabled={authEnabled}

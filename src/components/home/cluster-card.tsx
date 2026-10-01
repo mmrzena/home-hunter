@@ -17,6 +17,7 @@ import {
   RiTrainLine,
 } from "@remixicon/react";
 import Link from "next/link";
+import { memo } from "react";
 import { ContactButton } from "@/components/contacts/contact-button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -75,7 +76,13 @@ const EXIT_STYLES: Record<
   },
 };
 
-export function ClusterCard({
+/**
+ * Memoised: the feed renders several hundred of these and the parent re-renders
+ * on every hover / selection, so a card only re-renders when its own props
+ * change. Off-screen cards also skip layout and paint (`content-visibility`),
+ * which keeps scrolling smooth with a long list.
+ */
+export const ClusterCard = memo(function ClusterCard({
   card,
   anchorLabel,
   isSelected,
@@ -124,7 +131,7 @@ export function ClusterCard({
     <div
       id={`cluster-card-${card.clusterId}`}
       ref={rowRef}
-      className="relative shrink-0 overflow-hidden rounded-lg"
+      className="relative shrink-0 overflow-hidden rounded-lg [contain-intrinsic-size:auto_176px] [content-visibility:auto]"
     >
       {/* The action revealed beneath the card as it slides out (swipe or button).
           The badge + label scale and fade in with the drag, then pop on arm. */}
@@ -250,7 +257,7 @@ export function ClusterCard({
                 )}
               </div>
 
-              {(card.pragueKm != null ||
+              {(card.hub != null ||
                 card.nearestStationKm != null ||
                 card.population != null) && (
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
@@ -265,13 +272,13 @@ export function ClusterCard({
                       </span>
                     </span>
                   )}
-                  {card.pragueKm != null && (
+                  {card.hub != null && (
                     <span className="flex items-center gap-1">
                       <RiBuilding2Line className="size-3.5 shrink-0" />
                       <span className="font-mono">
-                        {formatDistance(card.pragueKm)}
+                        {formatDistance(card.hub.km)}
                       </span>{" "}
-                      to Prague
+                      to {card.hub.label}
                     </span>
                   )}
                   {card.nearestStationKm != null && (
@@ -502,4 +509,4 @@ export function ClusterCard({
       </div>
     </div>
   );
-}
+});

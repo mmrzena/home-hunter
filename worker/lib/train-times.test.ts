@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fastestTrainToPrague } from "@/lib/train-times";
+import { HUBS } from "@/lib/hubs";
+import { fastestTrain } from "@/lib/train-times";
 
 const HOUSE = { lat: 50.43, lng: 15.58 };
 
@@ -32,13 +33,17 @@ test("picks the fastest morning train and ignores walking legs", async (context)
       ],
     });
   });
-  const trip = await fastestTrainToPrague(HOUSE);
+  const trip = await fastestTrain(HOUSE, HUBS.prague.station);
   assert.deepEqual(
     { minutes: trip?.minutes, transfers: trip?.transfers, lines: trip?.lines },
     { minutes: 118, transfers: 1, lines: ["V41", "R10"] },
   );
   const params = new URL(urls[0]).searchParams;
   assert.equal(params.get("transitModes"), "RAIL");
+  assert.equal(
+    params.get("toPlace"),
+    `${HUBS.prague.station.lat},${HUBS.prague.station.lng}`,
+  );
   const departure = new Date(params.get("time") ?? "");
   assert.ok(departure.getUTCDay() >= 1 && departure.getUTCDay() <= 5);
   const pragueTime = new Intl.DateTimeFormat("en-GB", {
@@ -58,6 +63,6 @@ test("router failures and odd shapes degrade to no train", async (context) => {
   ];
   for (const respond of responses) {
     context.mock.method(globalThis, "fetch", async () => respond());
-    assert.equal(await fastestTrainToPrague(HOUSE), null);
+    assert.equal(await fastestTrain(HOUSE, HUBS.prague.station), null);
   }
 });

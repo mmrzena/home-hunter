@@ -44,7 +44,10 @@ export function AnalysisReport({ report }: { report: HouseAnalysis }) {
     ],
   ];
   const locationFacts = [
-    ["Prague centre", formatDistance(location.pragueKm)],
+    [
+      `${location.hub?.label ?? "Prague"} centre`,
+      formatDistance(location.hub?.km),
+    ],
     ["Settlement", location.settlementClass ?? "Unknown"],
     ["Population", formatPopulation(location.population)],
     ...(location.anchorLabel
@@ -117,7 +120,7 @@ export function AnalysisReport({ report }: { report: HouseAnalysis }) {
           <TrainConnections
             house={{ lat: listing.lat, lng: listing.lng }}
             stations={location.stations}
-            pragueKm={location.pragueKm}
+            hub={location.hub}
           />
         )}
       <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">

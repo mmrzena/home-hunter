@@ -107,7 +107,10 @@ export function connectFeedSeen(
   pusher: (seenAt: number) => void,
 ) {
   const explicitLocal = readExplicit() ? readLocal() : null;
-  let merged = Math.max(serverSeenAt ?? 0, explicitLocal ?? 0) || null;
+  // Reconnecting (the feed remounted) must not regress a catch-up made since.
+  const current = mode === "remote" ? seenThrough : null;
+  let merged =
+    Math.max(serverSeenAt ?? 0, explicitLocal ?? 0, current ?? 0) || null;
   // Brand-new everywhere: establish the baseline now so the next device inherits it.
   if (merged == null) merged = Date.now();
 

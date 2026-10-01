@@ -174,7 +174,13 @@ export const user = pgTable("user", {
   // "Feed caught up through" high-water mark — see /api/feed-seen. Null until
   // the user first catches up on a signed-in device.
   feedSeenAt: timestamp("feed_seen_at", { withTimezone: true }),
+  // The filter bar's saved state — see /api/filter-prefs. Null until the user
+  // first changes a filter on a signed-in device.
+  filterPrefs: jsonb("filter_prefs").$type<FilterPrefs>(),
 });
+
+/** The filter bar as the user left it: the URL query + hidden filter controls. */
+export type FilterPrefs = { query: string; hidden: string[] };
 
 export const session = pgTable("session", {
   id: text("id").primaryKey(),

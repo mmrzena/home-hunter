@@ -1,11 +1,10 @@
 /**
- * Train journey times to Prague via Transitous (https://transitous.org), a free
- * MOTIS router over the Czech national timetables. Called on demand from the
- * house analysis only. Every failure (timeout, shape change, no connection)
- * yields null so the report still renders.
+ * Train journey times to a hub station (Praha hl.n. or Jičín) via Transitous
+ * (https://transitous.org), a free MOTIS router over the Czech national
+ * timetables. Called on demand from the house analysis only. Every failure
+ * (timeout, shape change, no connection) yields null so the report still renders.
  */
 const PLAN_URL = "https://api.transitous.org/api/v5/plan";
-const PRAHA_HLAVNI_NADRAZI = { lat: 50.0831, lng: 14.4353 } as const;
 const DEPARTURE_HOUR = 6; // Prague local; the router searches ~2 h onward.
 // A sparse halt makes the router look days ahead; that is not a commute.
 const MAX_WAIT_MS = 3 * 60 * 60 * 1000;
@@ -66,16 +65,16 @@ function parseTrip(value: unknown): TrainTrip | undefined {
   };
 }
 
-/** Fastest weekday-morning rail trip from a station to Praha hl.n., or null. */
-export async function fastestTrainToPrague(from: {
-  lat: number;
-  lng: number;
-}): Promise<TrainTrip | null> {
+/** Fastest weekday-morning rail trip from a station to a hub station, or null. */
+export async function fastestTrain(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+): Promise<TrainTrip | null> {
   const time = nextWeekdayMorning(DEPARTURE_HOUR);
   const latest = Date.parse(time) + MAX_WAIT_MS;
   const params = new URLSearchParams({
     fromPlace: `${from.lat},${from.lng}`,
-    toPlace: `${PRAHA_HLAVNI_NADRAZI.lat},${PRAHA_HLAVNI_NADRAZI.lng}`,
+    toPlace: `${to.lat},${to.lng}`,
     time,
     transitModes: "RAIL",
     numItineraries: "5",

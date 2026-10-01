@@ -2,7 +2,7 @@
 
 import { RiCloseLine, RiFilter3Line } from "@remixicon/react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import {
+  rememberFilterQuery,
+  toggleHiddenFilter,
+  useHiddenFilters,
+} from "@/lib/filter-prefs";
 import { formatSource } from "@/lib/format";
 import type { AppConfig } from "@/lib/types";
 import { AreaFilter } from "./area-filter";
@@ -31,14 +36,12 @@ const SORTS = [
   { value: "bestDeal", label: "Best deal" },
   { value: "priceAsc", label: "Cheapest" },
   { value: "priceDesc", label: "Priciest" },
-  { value: "prague", label: "Closest to Prague" },
+  { value: "hub", label: "Closest to town" },
   { value: "train", label: "Closest to train" },
   { value: "distance", label: "Nearest" },
 ];
 
 const SOURCES = ["sreality", "bezrealitky", "ceskereality"];
-
-const FILTER_PREFS_KEY = "home-hunter:hidden-filters:v1";
 
 export function FilterBar({ config }: { config: AppConfig | undefined }) {
   const pathname = usePathname();
@@ -50,7 +53,9 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
       // router.replace on this static page reused the cached URL and dropped a
       // newly added param whenever the query already had one. Next.js syncs
       // useSearchParams with the native history API.
-      window.history.replaceState(null, "", `${pathname}?${next.toString()}`);
+      const query = next.toString();
+      window.history.replaceState(null, "", `${pathname}?${query}`);
+      rememberFilterQuery(query);
     },
     [pathname],
   );
@@ -79,33 +84,9 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
     [params, commit],
   );
 
-  // Which filters the user has chosen to hide (persisted). Starts empty so SSR
-  // and the first client render agree, then loads on mount.
-  const [hidden, setHidden] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(FILTER_PREFS_KEY);
-      if (raw) setHidden(new Set(JSON.parse(raw) as string[]));
-    } catch {
-      // ignore unreadable prefs
-    }
-  }, []);
-  const toggleHidden = useCallback((key: string) => {
-    setHidden((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      try {
-        window.localStorage.setItem(
-          FILTER_PREFS_KEY,
-          JSON.stringify([...next]),
-        );
-      } catch {
-        // ignore unwritable prefs
-      }
-      return next;
-    });
-  }, []);
+  // Which filters the user has chosen to hide — device-local when signed out,
+  // part of the profile when signed in (see FilterPrefsSync).
+  const hidden = useHiddenFilters();
 
   const selectedAreas = params.getAll("area");
   const selectedSources = params.getAll("source");
@@ -121,9 +102,9 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
     },
     { key: "minLand", label: "Min land m²", active: !!params.get("minLand") },
     {
-      key: "maxPrague",
-      label: "Max km to Prague",
-      active: !!params.get("maxPrague"),
+      key: "maxHub",
+      label: "Max km to Prague / Jičín",
+      active: !!params.get("maxHub"),
     },
     { key: "areas", label: "Areas", active: selectedAreas.length > 0 },
     { key: "source", label: "Source", active: selectedSources.length > 0 },
@@ -173,7 +154,7 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
                 <Checkbox
                   checked={!hidden.has(filter.key) || filter.active}
                   disabled={filter.active}
-                  onCheckedChange={() => toggleHidden(filter.key)}
+                  onCheckedChange={() => toggleHiddenFilter(filter.key)}
                 />
                 <span className="flex-1 truncate">{filter.label}</span>
               </Label>
@@ -223,12 +204,12 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
           className="w-[110px]"
         />
       )}
-      {show("maxPrague") && (
+      {show("maxHub") && (
         <CommitInput
-          placeholder="Max km to Prague"
-          defaultValue={params.get("maxPrague") ?? ""}
-          onCommit={(value) => setParam("maxPrague", value)}
-          className="w-[140px]"
+          placeholder="Max km to Prague / Jičín"
+          defaultValue={params.get("maxHub") ?? ""}
+          onCommit={(value) => setParam("maxHub", value)}
+          className="w-[170px]"
         />
       )}
 

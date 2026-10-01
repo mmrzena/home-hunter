@@ -1,5 +1,5 @@
 import type { PriceBasis } from "@/db/schema";
-import { haversineKm } from "@/lib/stations";
+import { haversineKm } from "@/lib/geo";
 
 export const MIN_SAMPLES = 8;
 /** Above this share of the asking price, the house-alone figure is a small residual. */

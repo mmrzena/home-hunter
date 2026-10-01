@@ -1,5 +1,5 @@
+import { haversineKm } from "@/lib/geo";
 import placesData from "@/lib/places.json";
-import { haversineKm } from "@/lib/stations";
 
 /**
  * Settlements (city/town/village/hamlet) with population, pulled once from

@@ -1,7 +1,8 @@
 import { sql } from "@/db";
 import { anchor, env } from "@/lib/env";
+import { nearestHub } from "@/lib/hubs";
 import { placeInfo } from "@/lib/places";
-import { distanceToPragueKm, nearestStation } from "@/lib/stations";
+import { nearestStation } from "@/lib/stations";
 import type { ClusterCard, SortKey } from "@/lib/types";
 import { buildingPpm2 } from "../../worker/lib/price-model";
 
@@ -16,7 +17,8 @@ export type ClusterFilters = {
   goodDealsOnly?: boolean;
   freshOnly?: boolean;
   nearTrain?: boolean;
-  maxPragueKm?: number;
+  /** Max straight-line km to the listing's hub (Prague, or Jičín in okres Jičín). */
+  maxHubKm?: number;
   kind?: string;
   /** Only clusters first seen after this instant (ms epoch) — the "since last visit" filter. */
   addedAfter?: number;
@@ -107,10 +109,8 @@ function toCard(row: any): ClusterCard {
     sellerName: row.seller_name,
     sellerType: row.seller_type,
     distanceKm: row.distance_km,
-    pragueKm:
-      row.lat != null && row.lng != null
-        ? distanceToPragueKm(row.lat, row.lng)
-        : null,
+    hub:
+      row.lat != null && row.lng != null ? nearestHub(row.lat, row.lng) : null,
     nearestStationKm: station?.km ?? null,
     nearestStationName: station?.name ?? null,
     population: place.population,
@@ -232,8 +232,8 @@ export async function getClusters(
     distance,
   );
 
-  // Proximity to Prague + the nearest station is computed in JS (bundled OSM
-  // data), so its filter/sort live here rather than in SQL. They operate on the
+  // Proximity to the hub town + the nearest station is computed in JS (bundled
+  // OSM data), so its filter/sort live here rather than in SQL. They operate on the
   // already-filtered working set — stack a price/area/deal filter to narrow it.
   if (filters.nearTrain) {
     cards = cards.filter(
@@ -241,17 +241,15 @@ export async function getClusters(
         card.nearestStationKm != null && card.nearestStationKm <= NEAR_TRAIN_KM,
     );
   }
-  const maxPragueKm = filters.maxPragueKm;
-  if (maxPragueKm != null) {
-    cards = cards.filter(
-      (card) => card.pragueKm != null && card.pragueKm <= maxPragueKm,
-    );
+  const maxHubKm = filters.maxHubKm;
+  if (maxHubKm != null) {
+    cards = cards.filter((card) => card.hub != null && card.hub.km <= maxHubKm);
   }
-  if (filters.sort === "prague") {
+  if (filters.sort === "hub") {
     cards.sort(
       (a, b) =>
-        (a.pragueKm ?? Number.POSITIVE_INFINITY) -
-        (b.pragueKm ?? Number.POSITIVE_INFINITY),
+        (a.hub?.km ?? Number.POSITIVE_INFINITY) -
+        (b.hub?.km ?? Number.POSITIVE_INFINITY),
     );
   } else if (filters.sort === "train") {
     cards.sort(

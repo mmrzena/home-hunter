@@ -1,4 +1,5 @@
 import type { PriceBasis, Reason, SourceName } from "@/db/schema";
+import type { HubDistance } from "@/lib/hubs";
 
 export type { Reason };
 
@@ -52,8 +53,8 @@ export type ClusterCard = {
 
   distanceKm: number | null;
 
-  /** Distance to Prague centre + nearest railway station (computed server-side). */
-  pragueKm: number | null;
+  /** Distance to the town the listing is lived from (Prague, or Jičín for okres Jičín) + nearest railway station (computed server-side). */
+  hub: HubDistance | null;
   nearestStationKm: number | null;
   nearestStationName: string | null;
 
@@ -87,5 +88,5 @@ export type SortKey =
   | "priceDesc"
   | "bestDeal"
   | "distance"
-  | "prague"
+  | "hub"
   | "train";
