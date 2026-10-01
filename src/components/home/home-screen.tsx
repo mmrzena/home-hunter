@@ -10,11 +10,10 @@ import {
 } from "@remixicon/react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import {
   ResizableHandle,
@@ -29,7 +28,6 @@ import { type TriageView, triageStore, useTriage } from "@/lib/triage-store";
 import type { AppConfig, ClusterCard } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-import { AuthMenu } from "./auth-menu";
 import { ClusterCard as Card } from "./cluster-card";
 import { FeedSeenSync } from "./feed-seen-sync";
 import { FilterBar } from "./filter-bar";
@@ -398,13 +396,34 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     <div className="flex h-screen flex-col">
       {authEnabled && <TriageSync />}
       {authEnabled && <FeedSeenSync />}
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 py-2">
-        <div className="flex items-center gap-2">
-          <RiHome4Line className="size-5 text-primary" />
-          <span className="font-mono font-semibold tracking-tight">
-            home-hunter
-          </span>
-        </div>
+      <AppHeader
+        active="listings"
+        isAuthEnabled={authEnabled}
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden size-8 lg:inline-flex"
+              onClick={() => setHelpOpen(true)}
+              title="Keyboard shortcuts (?)"
+            >
+              <RiKeyboardLine className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={() => clusters.refetch()}
+              title="Refresh (r)"
+            >
+              <RiRefreshLine
+                className={cn("size-4", clusters.isFetching && "animate-spin")}
+              />
+            </Button>
+          </>
+        }
+      >
         <div className="flex flex-wrap items-center gap-1.5 text-sm">
           <span className="font-mono text-muted-foreground">
             {clusters.isLoading ? "loading…" : `${totalCount} listings`}
@@ -420,37 +439,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
             </button>
           )}
         </div>
-        <div className="ml-auto flex items-center gap-1">
-          <Link
-            href="/analyse"
-            className="mr-2 rounded-md bg-primary/10 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/20"
-          >
-            Analyse a house
-          </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="hidden size-8 lg:inline-flex"
-            onClick={() => setHelpOpen(true)}
-            title="Keyboard shortcuts (?)"
-          >
-            <RiKeyboardLine className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            onClick={() => clusters.refetch()}
-            title="Refresh (r)"
-          >
-            <RiRefreshLine
-              className={cn("size-4", clusters.isFetching && "animate-spin")}
-            />
-          </Button>
-          <ThemeToggle />
-          {authEnabled && <AuthMenu />}
-        </div>
-      </header>
+      </AppHeader>
 
       <FilterBar config={config.data} />
 

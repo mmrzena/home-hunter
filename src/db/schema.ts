@@ -254,8 +254,61 @@ export const userTriage = pgTable(
   (table) => [primaryKey({ columns: [table.userId, table.clusterId] })],
 );
 
+export type ContactStatus =
+  | "contacted"
+  | "visit_planned"
+  | "visited"
+  | "offer"
+  | "rejected";
+
+/**
+ * Houses the user has contacted, with their notes. Keyed on the advert, not the
+ * cluster (cluster ids are rebuilt); the snapshot keeps it readable after the
+ * advert disappears.
+ */
+export const houseContacts = pgTable(
+  "house_contacts",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    source: text("source").$type<SourceName>().notNull(),
+    sourceId: text("source_id").notNull(),
+    url: text("url").notNull(),
+    title: text("title"),
+    price: bigint("price", { mode: "number" }),
+    photo: text("photo"),
+    lat: doublePrecision("lat"),
+    lng: doublePrecision("lng"),
+    status: text("status")
+      .$type<ContactStatus>()
+      .notNull()
+      .default("contacted"),
+    contactName: text("contact_name"),
+    contactPhone: text("contact_phone"),
+    contactEmail: text("contact_email"),
+    visitAt: timestamp("visit_at", { withTimezone: true }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("house_contacts_user_advert").on(
+      table.userId,
+      table.source,
+      table.sourceId,
+    ),
+  ],
+);
+
 export type Listing = typeof listings.$inferSelect;
 export type NewListing = typeof listings.$inferInsert;
 export type Cluster = typeof clusters.$inferSelect;
 export type Area = typeof areas.$inferSelect;
 export type UserTriageRow = typeof userTriage.$inferSelect;
+export type HouseContactRow = typeof houseContacts.$inferSelect;

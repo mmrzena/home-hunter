@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { isAuthConfigured } from "@/lib/env";
 import { AnalysisScreen } from "./_components/analysis-screen";
 
 export const metadata: Metadata = {
@@ -8,5 +9,5 @@ export const metadata: Metadata = {
 };
 
 export default function AnalysePage() {
-  return <AnalysisScreen />;
+  return <AnalysisScreen isAuthEnabled={isAuthConfigured} />;
 }

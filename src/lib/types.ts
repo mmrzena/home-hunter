@@ -1,4 +1,4 @@
-import type { PriceBasis, Reason } from "@/db/schema";
+import type { PriceBasis, Reason, SourceName } from "@/db/schema";
 
 export type { Reason };
 
@@ -6,7 +6,7 @@ export type { Reason };
 export type ClusterCard = {
   clusterId: number;
   listingId: number;
-  source: string;
+  source: SourceName;
   sourceId: string;
   url: string | null;
 

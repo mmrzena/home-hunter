@@ -2,23 +2,20 @@
 
 import {
   RiArrowRightLine,
-  RiArrowRightUpLine,
-  RiHome4Line,
   RiLink,
   RiLoader4Line,
   RiSearchLine,
 } from "@remixicon/react";
 import { useMutation } from "@tanstack/react-query";
-import Link from "next/link";
 import { useState } from "react";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { HouseAnalysis } from "@/lib/analysis-types";
 import { AnalysisReport } from "./analysis-report";
 
-export function AnalysisScreen() {
+export function AnalysisScreen({ isAuthEnabled }: { isAuthEnabled: boolean }) {
   const [url, setUrl] = useState("");
   const analysis = useMutation({
     mutationFn: async (listingUrl: string): Promise<HouseAnalysis> => {
@@ -44,29 +41,7 @@ export function AnalysisScreen() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-5 sm:px-8">
-          <Link
-            href="/analyse"
-            className="flex items-center gap-2 font-mono text-sm font-semibold tracking-tight"
-          >
-            <RiHome4Line className="size-5 text-primary" />
-            home-hunter
-            <span className="hidden font-sans font-normal text-muted-foreground sm:inline">
-              / house analysis
-            </span>
-          </Link>
-          <nav aria-label="Main navigation" className="flex items-center gap-4">
-            <Link
-              href="/"
-              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-            >
-              Browse listings <RiArrowRightUpLine className="size-4" />
-            </Link>
-            <ThemeToggle />
-          </nav>
-        </div>
-      </header>
+      <AppHeader active="analyse" isAuthEnabled={isAuthEnabled} />
       <main className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-16">
         <section
           className={hasReport ? "mb-10" : "mx-auto max-w-3xl py-6 sm:py-12"}

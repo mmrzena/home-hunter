@@ -16,6 +16,7 @@ import {
   RiTrainLine,
 } from "@remixicon/react";
 
+import { ContactButton } from "@/components/contacts/contact-button";
 import { Badge } from "@/components/ui/badge";
 import {
   Carousel,
@@ -368,6 +369,28 @@ export function ClusterCard({
         {/* Triage actions — siblings of the card button (not nested), so the
           markup stays valid. The heart persists when active; hide reveals on hover. */}
         <div className="absolute top-2 right-2 flex items-center gap-1">
+          {card.url && (
+            <ContactButton
+              house={{
+                source: card.source,
+                sourceId: card.sourceId,
+                url: card.url,
+                title: [
+                  formatKind(card.propertyKind),
+                  card.usableAreaM2 != null && formatArea(card.usableAreaM2),
+                  card.cadastralName ?? card.localityText,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+                price: card.price,
+                photo: card.photo,
+                lat: card.lat,
+                lng: card.lng,
+              }}
+              suggestedName={card.sellerName}
+              variant="icon"
+            />
+          )}
           <button
             type="button"
             aria-label={isLiked ? "Remove from liked" : "I like it"}

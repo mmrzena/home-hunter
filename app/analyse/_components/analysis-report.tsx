@@ -1,4 +1,5 @@
 import { RiArrowRightUpLine, RiMapPinLine } from "@remixicon/react";
+import { ContactButton } from "@/components/contacts/contact-button";
 import type { HouseAnalysis } from "@/lib/analysis-types";
 import {
   formatArea,
@@ -65,15 +66,33 @@ export function AnalysisReport({ report }: { report: HouseAnalysis }) {
               ` · Listed ${DATE.format(new Date(listing.postedAt))}`}
           </p>
         </div>
-        <a
-          href={listing.url}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm hover:bg-muted"
-        >
-          Original listing
-          <RiArrowRightUpLine className="size-4" />
-        </a>
+        <div className="flex flex-wrap items-center gap-2">
+          {listing.url && (
+            <ContactButton
+              house={{
+                source: listing.source,
+                sourceId: listing.sourceId,
+                url: listing.url,
+                title: listing.localityText ?? null,
+                price: listing.price ?? null,
+                photo: listing.photos?.[0] ?? null,
+                lat: listing.lat ?? null,
+                lng: listing.lng ?? null,
+              }}
+              suggestedName={listing.sellerName}
+              variant="button"
+            />
+          )}
+          <a
+            href={listing.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm hover:bg-muted"
+          >
+            Original listing
+            <RiArrowRightUpLine className="size-4" />
+          </a>
+        </div>
       </div>
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <PropertyGallery
