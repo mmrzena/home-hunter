@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { db, user } from "@/db";
-import { auth } from "@/lib/auth";
+import { getSessionUserId } from "@/lib/session";
 
 /**
  * Per-user "feed caught up through" mark — the cross-device home for what
@@ -11,13 +11,8 @@ import { auth } from "@/lib/auth";
  * so a signed-out caller can never read or write someone's mark.
  */
 
-async function getUserId(request: NextRequest): Promise<string | null> {
-  const session = await auth.api.getSession({ headers: request.headers });
-  return session?.user.id ?? null;
-}
-
 export async function GET(request: NextRequest) {
-  const userId = await getUserId(request);
+  const userId = await getSessionUserId(request);
   if (!userId) return NextResponse.json({ seenAt: null });
 
   const [row] = await db
@@ -29,7 +24,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const userId = await getUserId(request);
+  const userId = await getSessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

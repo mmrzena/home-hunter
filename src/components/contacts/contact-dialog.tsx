@@ -46,21 +46,21 @@ function toLocalInput(iso: string): string {
   return local.toISOString().slice(0, 16);
 }
 
+/** Mounted only while open; closing calls `onClose` so the parent unmounts it. */
 export function ContactDialog({
   house,
   initial,
-  isOpen,
-  onOpenChange,
+  onClose,
 }: {
   house: ContactHouse;
   initial: ContactDetails;
-  isOpen: boolean;
-  onOpenChange: (isOpen: boolean) => void;
+  onClose: () => void;
 }) {
   const save = useSaveContact();
   const form = useForm<FormValues>({
     resolver: zodResolver(FORM),
-    values: { ...initial, visitAt: toLocalInput(initial.visitAt) },
+    // defaultValues, not values: a background refetch must not wipe edits.
+    defaultValues: { ...initial, visitAt: toLocalInput(initial.visitAt) },
   });
   const { errors } = form.formState;
 
@@ -71,12 +71,12 @@ export function ContactDialog({
         visitAt: values.visitAt ? new Date(values.visitAt).toISOString() : "",
         house,
       },
-      { onSuccess: () => onOpenChange(false) },
+      { onSuccess: onClose },
     );
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Contact notes</DialogTitle>
@@ -153,11 +153,7 @@ export function ContactDialog({
           </Field>
         </form>
         <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-          >
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" form="contact-form" disabled={save.isPending}>

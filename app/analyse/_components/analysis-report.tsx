@@ -1,6 +1,7 @@
 import { RiArrowRightUpLine, RiMapPinLine } from "@remixicon/react";
 import { ContactButton } from "@/components/contacts/contact-button";
 import type { HouseAnalysis } from "@/lib/analysis-types";
+import { houseFromAnalysis } from "@/lib/contacts";
 import {
   formatArea,
   formatDistance,
@@ -69,16 +70,7 @@ export function AnalysisReport({ report }: { report: HouseAnalysis }) {
         <div className="flex flex-wrap items-center gap-2">
           {listing.url && (
             <ContactButton
-              house={{
-                source: listing.source,
-                sourceId: listing.sourceId,
-                url: listing.url,
-                title: listing.localityText ?? null,
-                price: listing.price ?? null,
-                photo: listing.photos?.[0] ?? null,
-                lat: listing.lat ?? null,
-                lng: listing.lng ?? null,
-              }}
+              house={houseFromAnalysis({ ...listing, url: listing.url })}
               suggestedName={listing.sellerName}
               variant="button"
             />

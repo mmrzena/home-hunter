@@ -1,14 +1,20 @@
+/**
+ * Contacted houses and their notes (names, phone numbers, visit dates). Every
+ * handler is gated on the better-auth session and scoped to its user: this is
+ * personal data, so it never falls back to an anonymous store.
+ */
+
 import { and, desc, eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { db, houseContacts, listings, user } from "@/db";
 import type { HouseContactRow } from "@/db/schema";
-import { auth } from "@/lib/auth";
 import {
   CONTACT_SAVE,
   type Contact,
   IS_DEV_WITHOUT_SIGN_IN,
 } from "@/lib/contacts";
+import { getSessionUserId } from "@/lib/session";
 
 const DEV_USER = {
   id: "local-dev",
@@ -17,16 +23,9 @@ const DEV_USER = {
   emailVerified: true,
 };
 
-/**
- * Contacted houses and their notes (names, phone numbers, visit dates). Every
- * handler is gated on the better-auth session and scoped to its user: this is
- * personal data, so it never falls back to an anonymous store.
- */
-
 async function getUserId(request: NextRequest): Promise<string | null> {
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (session) return session.user.id;
-  if (!IS_DEV_WITHOUT_SIGN_IN) return null;
+  const userId = await getSessionUserId(request);
+  if (userId || !IS_DEV_WITHOUT_SIGN_IN) return userId;
   await db.insert(user).values(DEV_USER).onConflictDoNothing();
   return DEV_USER.id;
 }
@@ -54,7 +53,7 @@ function toContact(row: HouseContactRow, current: Contact["current"]): Contact {
   };
 }
 
-const UNAUTHORIZED = () =>
+const unauthorized = () =>
   NextResponse.json(
     { error: "Sign in to keep contact notes." },
     { status: 401 },
@@ -62,7 +61,7 @@ const UNAUTHORIZED = () =>
 
 export async function GET(request: NextRequest) {
   const userId = await getUserId(request);
-  if (!userId) return UNAUTHORIZED();
+  if (!userId) return unauthorized();
   const rows = await db
     .select({
       contact: houseContacts,
@@ -92,7 +91,7 @@ export async function GET(request: NextRequest) {
 /** Creates or updates the contact for one advert (one entry per advert). */
 export async function PUT(request: NextRequest) {
   const userId = await getUserId(request);
-  if (!userId) return UNAUTHORIZED();
+  if (!userId) return unauthorized();
   const parsed = CONTACT_SAVE.safeParse(await request.json().catch(() => null));
   if (!parsed.success)
     return NextResponse.json(
@@ -127,7 +126,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const userId = await getUserId(request);
-  if (!userId) return UNAUTHORIZED();
+  if (!userId) return unauthorized();
   const id = Number(request.nextUrl.searchParams.get("id"));
   if (!Number.isInteger(id))
     return NextResponse.json({ error: "Bad request" }, { status: 400 });

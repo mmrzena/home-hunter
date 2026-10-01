@@ -3,18 +3,13 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { db, userTriage } from "@/db";
 import type { TriageState } from "@/db/schema";
-import { auth } from "@/lib/auth";
+import { getSessionUserId } from "@/lib/session";
 
 /**
  * Per-user triage store — the durable, cross-device home for what used to live
  * in localStorage. Every handler is gated on the better-auth session, so a
  * signed-out (or disallowed) caller can never read or write someone's hunt.
  */
-
-async function getUserId(request: NextRequest): Promise<string | null> {
-  const session = await auth.api.getSession({ headers: request.headers });
-  return session?.user.id ?? null;
-}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -23,7 +18,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 export async function GET(request: NextRequest) {
-  const userId = await getUserId(request);
+  const userId = await getSessionUserId(request);
   if (!userId) return NextResponse.json({ seen: [], shortlist: [] });
 
   // Oldest-added first, so the client's Set keeps insertion order (newest last)
@@ -43,7 +38,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const userId = await getUserId(request);
+  const userId = await getSessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -73,7 +68,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const userId = await getUserId(request);
+  const userId = await getSessionUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

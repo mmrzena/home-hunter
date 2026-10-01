@@ -5,6 +5,7 @@ import {
   RiArrowDownSLine,
   RiArrowGoBackLine,
   RiArrowRightUpLine,
+  RiBarChartBoxLine,
   RiBuilding2Line,
   RiCloseLine,
   RiExternalLinkLine,
@@ -15,7 +16,7 @@ import {
   RiMapPin2Line,
   RiTrainLine,
 } from "@remixicon/react";
-
+import Link from "next/link";
 import { ContactButton } from "@/components/contacts/contact-button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -25,6 +26,8 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+import { analyseHref } from "@/lib/analyse-href";
+import { houseFromCard } from "@/lib/contacts";
 import {
   formatArea,
   formatDistance,
@@ -335,16 +338,26 @@ export function ClusterCard({
                     (card.sellerType === "private" ? "Soukromá osoba" : "—")}
                 </span>
                 {card.url && (
-                  <a
-                    href={card.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={(event) => event.stopPropagation()}
-                    className="inline-flex shrink-0 items-center gap-1 text-primary hover:underline"
-                  >
-                    {formatSource(card.source)}{" "}
-                    <RiExternalLinkLine className="size-3" />
-                  </a>
+                  <span className="flex shrink-0 items-center gap-2.5">
+                    <Link
+                      href={analyseHref(card.url)}
+                      onClick={(event) => event.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-primary hover:underline"
+                    >
+                      <RiBarChartBoxLine className="size-3" />
+                      Analyse
+                    </Link>
+                    <a
+                      href={card.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(event) => event.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-primary hover:underline"
+                    >
+                      {formatSource(card.source)}{" "}
+                      <RiExternalLinkLine className="size-3" />
+                    </a>
+                  </span>
                 )}
               </div>
             </div>
@@ -371,22 +384,7 @@ export function ClusterCard({
         <div className="absolute top-2 right-2 flex items-center gap-1">
           {card.url && (
             <ContactButton
-              house={{
-                source: card.source,
-                sourceId: card.sourceId,
-                url: card.url,
-                title: [
-                  formatKind(card.propertyKind),
-                  card.usableAreaM2 != null && formatArea(card.usableAreaM2),
-                  card.cadastralName ?? card.localityText,
-                ]
-                  .filter(Boolean)
-                  .join(" · "),
-                price: card.price,
-                photo: card.photo,
-                lat: card.lat,
-                lng: card.lng,
-              }}
+              house={houseFromCard({ ...card, url: card.url })}
               suggestedName={card.sellerName}
               variant="icon"
             />

@@ -6,37 +6,52 @@ import {
   RiLoader4Line,
   RiSearchLine,
 } from "@remixicon/react";
-import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { analyseHref } from "@/lib/analyse-href";
 import type { HouseAnalysis } from "@/lib/analysis-types";
+import { fetchJson } from "@/lib/fetch-json";
 import { AnalysisReport } from "./analysis-report";
 
+function fetchAnalysis(listingUrl: string): Promise<HouseAnalysis> {
+  return fetchJson("/api/analyse", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: listingUrl }),
+    signal: AbortSignal.timeout(65_000),
+  });
+}
+
 export function AnalysisScreen({ isAuthEnabled }: { isAuthEnabled: boolean }) {
-  const [url, setUrl] = useState("");
-  const analysis = useMutation({
-    mutationFn: async (listingUrl: string): Promise<HouseAnalysis> => {
-      const response = await fetch("/api/analyse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: listingUrl }),
-        signal: AbortSignal.timeout(65_000),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(
-          body?.error ??
-            "The analysis could not be completed. Please try again.",
-        );
-      }
-      return response.json();
-    },
+  // The analysed listing lives in the URL, so a report can be linked to,
+  // reloaded, and left with the Back button.
+  const target = useSearchParams().get("url")?.trim() ?? "";
+  const analysis = useQuery({
+    queryKey: ["analyse", target],
+    queryFn: () => fetchAnalysis(target),
+    enabled: target !== "",
     retry: false,
+    // A report is a snapshot: re-run only when asked (same URL resubmitted).
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     meta: { skipErrorToast: true },
   });
+  const isAnalysing = analysis.isFetching;
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const listingUrl = String(
+      new FormData(event.currentTarget).get("url") ?? "",
+    ).trim();
+    if (!listingUrl) return;
+    if (listingUrl === target) void analysis.refetch();
+    else window.history.pushState(null, "", analyseHref(listingUrl));
+  }
   const hasReport = analysis.isSuccess;
 
   return (
@@ -73,13 +88,7 @@ export function AnalysisScreen({ isAuthEnabled }: { isAuthEnabled: boolean }) {
             Paste a listing to explore its asking price, nearby comparisons, and
             the details that make a house worth a closer look.
           </p>
-          <form
-            className="mt-8"
-            onSubmit={(event) => {
-              event.preventDefault();
-              analysis.mutate(url.trim());
-            }}
-          >
+          <form key={target} className="mt-8" onSubmit={handleSubmit}>
             <label
               htmlFor="listing-url"
               className="mb-2 block text-sm font-medium"
@@ -90,22 +99,22 @@ export function AnalysisScreen({ isAuthEnabled }: { isAuthEnabled: boolean }) {
               <RiLink className="ml-3 hidden size-5 shrink-0 text-muted-foreground sm:block" />
               <Input
                 id="listing-url"
+                name="url"
                 type="url"
                 required
                 maxLength={2048}
-                value={url}
-                onChange={(event) => setUrl(event.target.value)}
-                disabled={analysis.isPending}
+                defaultValue={target}
+                disabled={isAnalysing}
                 placeholder="https://www.sreality.cz/detail/…"
                 aria-describedby="supported-portals"
                 className="h-12 border-0 bg-transparent shadow-none focus-visible:ring-0"
               />
               <Button
                 type="submit"
-                disabled={!url.trim() || analysis.isPending}
+                disabled={isAnalysing}
                 className="h-12 rounded-xl px-6"
               >
-                {analysis.isPending ? (
+                {isAnalysing ? (
                   <>
                     <RiLoader4Line className="size-4 animate-spin" />
                     Analysing…
@@ -138,7 +147,7 @@ export function AnalysisScreen({ isAuthEnabled }: { isAuthEnabled: boolean }) {
             </div>
           )}
         </section>
-        {analysis.isPending && (
+        {isAnalysing && !analysis.data && (
           <section aria-live="polite" aria-busy="true" className="space-y-5">
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <RiSearchLine className="size-5 animate-pulse" />
@@ -157,7 +166,7 @@ export function AnalysisScreen({ isAuthEnabled }: { isAuthEnabled: boolean }) {
             report={analysis.data}
           />
         )}
-        {analysis.isIdle && (
+        {target === "" && (
           <section
             aria-label="What you will learn"
             className="mx-auto mt-10 grid max-w-3xl gap-8 border-t pt-8 sm:grid-cols-3"

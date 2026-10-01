@@ -4,16 +4,15 @@ import { RiContactsBook2Fill, RiContactsBook2Line } from "@remixicon/react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { signIn, useSession } from "@/lib/auth-client";
+import { signIn } from "@/lib/auth-client";
 import {
   type ContactDetails,
   type ContactHouse,
   contactKey,
-  IS_DEV_WITHOUT_SIGN_IN,
 } from "@/lib/contacts";
 import { cn } from "@/lib/utils";
 import { ContactDialog } from "./contact-dialog";
-import { useContacts } from "./use-contacts";
+import { useContactsState } from "./contacts-provider";
 
 const EMPTY_DETAILS: ContactDetails = {
   status: "contacted",
@@ -25,10 +24,10 @@ const EMPTY_DETAILS: ContactDetails = {
 };
 
 /**
- * Marks a house as contacted and opens its notes. Self-contained (reads the
- * contact list itself) so cards and the analysis report need no extra wiring.
- * Signed out, it starts Google sign-in: notes hold personal data and live only
- * on the server.
+ * Marks a house as contacted and opens its notes. Reads the shared contacts
+ * state, so cards and the analysis report need no extra wiring. Signed out, it
+ * starts Google sign-in (notes hold personal data and live only on the server);
+ * with sign-in not configured it renders nothing.
  */
 export function ContactButton({
   house,
@@ -40,25 +39,24 @@ export function ContactButton({
   /** "icon": a feed-card action, shown on hover until the house is contacted. */
   variant: "icon" | "button";
 }) {
-  const { data: session } = useSession();
-  const contacts = useContacts();
+  const { isAvailable, isSessionPending, canUse, byKey } = useContactsState();
   const [isOpen, setIsOpen] = useState(false);
-  const existing = contacts.data?.find(
-    (contact) => contactKey(contact) === contactKey(house),
-  );
+  const existing = byKey.get(contactKey(house));
   const isContacted = existing !== undefined;
-  const canSave = Boolean(session?.user) || IS_DEV_WITHOUT_SIGN_IN;
   const label = isContacted ? "Contacted · edit notes" : "Add to contacted";
   const Icon = isContacted ? RiContactsBook2Fill : RiContactsBook2Line;
 
   function handleClick(event: React.MouseEvent) {
     event.stopPropagation();
-    if (!canSave) {
+    if (isSessionPending) return;
+    if (!canUse) {
       signIn.social({ provider: "google", callbackURL: window.location.href });
       return;
     }
     setIsOpen(true);
   }
+
+  if (!isAvailable) return null;
 
   return (
     <>
@@ -66,7 +64,7 @@ export function ContactButton({
         <Button
           variant={isContacted ? "secondary" : "default"}
           className="gap-1.5 rounded-full"
-          title={canSave ? undefined : "Sign in to keep contact notes"}
+          title={canUse ? undefined : "Sign in to keep contact notes"}
           onClick={handleClick}
         >
           <Icon className="size-4" />
@@ -76,7 +74,7 @@ export function ContactButton({
         <button
           type="button"
           aria-label={label}
-          title={canSave ? label : "Sign in to keep contact notes"}
+          title={canUse ? label : "Sign in to keep contact notes"}
           onClick={handleClick}
           className={cn(
             "flex size-7 items-center justify-center rounded-md transition-colors",
@@ -94,8 +92,7 @@ export function ContactButton({
           initial={
             existing ?? { ...EMPTY_DETAILS, contactName: suggestedName ?? "" }
           }
-          isOpen={isOpen}
-          onOpenChange={setIsOpen}
+          onClose={() => setIsOpen(false)}
         />
       )}
     </>

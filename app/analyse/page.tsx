@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { isAuthConfigured } from "@/lib/env";
 import { AnalysisScreen } from "./_components/analysis-screen";
 
@@ -9,5 +10,10 @@ export const metadata: Metadata = {
 };
 
 export default function AnalysePage() {
-  return <AnalysisScreen isAuthEnabled={isAuthConfigured} />;
+  // useSearchParams (the analysed URL) needs a Suspense boundary on a static page.
+  return (
+    <Suspense fallback={null}>
+      <AnalysisScreen isAuthEnabled={isAuthConfigured} />
+    </Suspense>
+  );
 }

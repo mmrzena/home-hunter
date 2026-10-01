@@ -23,6 +23,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { markFeedSeen, sinceLabel, useFeedSeen } from "@/lib/feed-seen";
+import { fetchJson } from "@/lib/fetch-json";
 import { TONE_DOT, type Tone } from "@/lib/listing-status";
 import { type TriageView, triageStore, useTriage } from "@/lib/triage-store";
 import type { AppConfig, ClusterCard } from "@/lib/types";
@@ -53,12 +54,6 @@ const LEGEND: Array<{ tone: Tone; label: string }> = [
 
 // Stable empty reference so a not-yet-loaded by-id query doesn't churn the map.
 const NO_CARDS: ClusterCard[] = [];
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
-  return response.json() as Promise<T>;
-}
 
 /** `/api/clusters?id=…` — fetch a set of clusters by id, ignoring the filters. */
 function byIdUrl(ids: number[]): string {

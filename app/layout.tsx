@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Open_Sans } from "next/font/google";
 
+import { ContactsProvider } from "@/components/contacts/contacts-provider";
 import { QueryProvider } from "@/components/query-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { isAuthConfigured } from "@/lib/env";
 import "./globals.css";
 
 const openSans = Open_Sans({
@@ -45,7 +47,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <QueryProvider>{children}</QueryProvider>
+          <QueryProvider>
+            <ContactsProvider isAuthEnabled={isAuthConfigured}>
+              {children}
+            </ContactsProvider>
+          </QueryProvider>
           <Toaster />
         </ThemeProvider>
       </body>

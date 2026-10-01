@@ -1,3 +1,5 @@
+import { normalizeText } from "@/lib/text";
+
 /**
  * Czech "go off-platform / pay before viewing" phrasing — the textual half of
  * the scam signal. Matched diacritic-insensitively against the normalized
@@ -28,19 +30,11 @@ const RED_PHRASES: Array<{ test: RegExp; label: string }> = [
   },
 ];
 
-/** Lowercase + strip diacritics so "zálohu předem" matches "zaloh predem". */
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "");
-}
-
 export function detectRedPhrase(
   description: string | null | undefined,
 ): string | null {
   if (!description) return null;
-  const normalized = normalize(description);
+  const normalized = normalizeText(description);
   for (const phrase of RED_PHRASES) {
     if (phrase.test.test(normalized)) return phrase.label;
   }

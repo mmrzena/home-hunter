@@ -1,5 +1,8 @@
 import { z } from "zod";
 import type { ContactStatus, SourceName } from "@/db/schema";
+import type { HouseAnalysis } from "@/lib/analysis-types";
+import { formatArea, formatKind } from "@/lib/format";
+import type { ClusterCard } from "@/lib/types";
 
 /**
  * Contacted houses: the client/server contract. The house snapshot travels
@@ -71,6 +74,89 @@ export type Contact = ContactHouse &
  * builds (Vercel included) always require a session.
  */
 export const IS_DEV_WITHOUT_SIGN_IN = process.env.NODE_ENV === "development";
+
+/** Pipeline order: what needs you soonest comes first. */
+export const STATUS_ORDER: Record<ContactStatus, number> = {
+  visit_planned: 0,
+  offer: 1,
+  visited: 2,
+  contacted: 3,
+  rejected: 4,
+};
+
+export function isUpcomingVisit(contact: Contact, now: number): boolean {
+  return contact.visitAt !== "" && Date.parse(contact.visitAt) >= now;
+}
+
+export function isContactStatus(value: string): value is ContactStatus {
+  return CONTACT_STATUSES.some((status) => status === value);
+}
+
+export function telHref(phone: string): string {
+  return `tel:${phone.replace(/\s/g, "")}`;
+}
+
+/** The editable details of a saved contact (what the form round-trips). */
+export function detailsOf(contact: Contact): ContactDetails {
+  return {
+    status: contact.status,
+    contactName: contact.contactName,
+    contactPhone: contact.contactPhone,
+    contactEmail: contact.contactEmail,
+    visitAt: contact.visitAt,
+    notes: contact.notes,
+  };
+}
+
+export function houseFromCard(
+  card: ClusterCard & { url: string },
+): ContactHouse {
+  return {
+    source: card.source,
+    sourceId: card.sourceId,
+    url: card.url,
+    title: [
+      formatKind(card.propertyKind),
+      card.usableAreaM2 != null && formatArea(card.usableAreaM2),
+      card.cadastralName ?? card.localityText,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    price: card.price,
+    photo: card.photo,
+    lat: card.lat,
+    lng: card.lng,
+  };
+}
+
+export function houseFromAnalysis(
+  listing: HouseAnalysis["listing"] & { url: string },
+): ContactHouse {
+  return {
+    source: listing.source,
+    sourceId: listing.sourceId,
+    url: listing.url,
+    title: listing.localityText ?? null,
+    price: listing.price ?? null,
+    photo: listing.photos?.[0] ?? null,
+    lat: listing.lat ?? null,
+    lng: listing.lng ?? null,
+  };
+}
+
+/** The house snapshot of a saved contact, as sent back on every save. */
+export function houseOf(contact: Contact): ContactHouse {
+  return {
+    source: contact.source,
+    sourceId: contact.sourceId,
+    url: contact.url,
+    title: contact.title,
+    price: contact.price,
+    photo: contact.photo,
+    lat: contact.lat,
+    lng: contact.lng,
+  };
+}
 
 export function contactKey(house: Pick<ContactHouse, "source" | "sourceId">) {
   return `${house.source}:${house.sourceId}`;

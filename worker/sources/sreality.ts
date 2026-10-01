@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { largePhoto, SDN_THUMBNAIL } from "@/lib/photos";
 
 import { getJson, throttle } from "../lib/http";
 import { SREALITY_LOCALITIES } from "../lib/regions";
@@ -81,15 +82,11 @@ function localityText(
   return part ?? district;
 }
 
-// Seznam's sdn.cz CDN hotlink-protects raw image URLs (401). Only whitelisted
-// `fl=` derivatives resolve — and they do so referer-free, so the stored URL is
-// both hashable here and hot-linkable from the web app. 100px is the available
-// size; ample for dHash (downscaled to 9×8) and fine for feed thumbnails.
-const SDN_TRANSFORM = "?fl=res,100,100,1|jpg,80";
+// Stored photo URLs carry the whitelisted sdn.cz thumbnail transform (@/lib/photos).
 
 function sdnTransform(url: string): string {
   return url.includes("sdn.cz") && !url.includes("?")
-    ? `${url}${SDN_TRANSFORM}`
+    ? `${url}${SDN_THUMBNAIL}`
     : url;
 }
 
@@ -258,9 +255,7 @@ export function parseSrealityDetail(
     lat: toNumber(locality?.gps_lat),
     lng: toNumber(locality?.gps_lon),
     photos: imageUrls(detail.advert_images).map((url) =>
-      photoSize === "large"
-        ? url.replace(SDN_TRANSFORM, "?fl=res,1200,1200,1|shr,,20|jpg,80")
-        : url,
+      photoSize === "large" ? largePhoto(url) : url,
     ),
     url: detailUrl(kind, locality, detail.hash_id),
   };

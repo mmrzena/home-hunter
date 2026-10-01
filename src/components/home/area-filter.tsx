@@ -18,20 +18,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { normalizeText } from "@/lib/text";
 import type { AreaFacet } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** Lowercase without diacritics, so "brandys" finds "Brandýs nad Labem". */
-function normalize(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase();
-}
-
 // Every word of the query must appear somewhere in the area's name.
 function matchesQuery(area: AreaFacet, words: string[]): boolean {
-  const name = normalize(area.name);
+  const name = normalizeText(area.name);
   return words.every((word) => name.includes(word));
 }
 
@@ -48,13 +41,12 @@ export function AreaFilter({
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
-  const words = normalize(query).split(/\s+/).filter(Boolean);
+  const words = normalizeText(query).split(/\s+/).filter(Boolean);
   // Filtered here rather than by cmdk, which re-sorts the DOM by match score
   // and never restores it, so "Selected" could end up below other areas.
   const visible = areas.filter((area) => matchesQuery(area, words));
   const chosen = visible.filter((area) => selected.includes(area.code));
   const rest = visible.filter((area) => !selected.includes(area.code));
-  const selectedCount = selected.length;
 
   function handleQueryChange(next: string) {
     setQuery(next);
@@ -100,9 +92,9 @@ export function AreaFilter({
             value={query}
             onValueChange={handleQueryChange}
           />
-          {selectedCount > 0 && (
+          {selected.length > 0 && (
             <div className="flex items-center justify-between border-b px-3 py-1.5 text-xs text-muted-foreground">
-              {selectedCount} selected
+              {selected.length} selected
               <button
                 type="button"
                 onClick={onClear}
