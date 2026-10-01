@@ -1,7 +1,7 @@
 "use client";
 
 import { RiCloseLine, RiFilter3Line } from "@remixicon/react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -41,15 +41,18 @@ const SOURCES = ["sreality", "bezrealitky", "ceskereality"];
 const FILTER_PREFS_KEY = "home-hunter:hidden-filters:v1";
 
 export function FilterBar({ config }: { config: AppConfig | undefined }) {
-  const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
 
   const commit = useCallback(
     (next: URLSearchParams) => {
-      router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+      // Filters are client-only state, so no router navigation: in production
+      // router.replace on this static page reused the cached URL and dropped a
+      // newly added param whenever the query already had one. Next.js syncs
+      // useSearchParams with the native history API.
+      window.history.replaceState(null, "", `${pathname}?${next.toString()}`);
     },
-    [router, pathname],
+    [pathname],
   );
 
   const setParam = useCallback(
@@ -234,11 +237,7 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
           areas={config?.areas ?? []}
           selected={selectedAreas}
           onToggle={(code, isChecked) => toggleMulti("area", code, isChecked)}
-          onClear={() => {
-            const next = new URLSearchParams(params);
-            next.delete("area");
-            commit(next);
-          }}
+          onClear={() => setParam("area", null)}
         />
       )}
 
