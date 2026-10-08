@@ -94,7 +94,7 @@ export function ContactDialog({
         <form
           id="contact-form"
           onSubmit={form.handleSubmit(handleSubmit)}
-          className="grid min-h-0 flex-1 gap-4 overflow-y-auto overscroll-contain p-4 sm:grid-cols-2 sm:p-6"
+          className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-x-hidden overflow-y-auto overscroll-contain p-4 sm:grid-cols-2 sm:p-6"
         >
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="contact-status">Status</FieldLabel>
@@ -143,12 +143,13 @@ export function ContactDialog({
             <Input
               id="contact-visit"
               type="datetime-local"
+              className="appearance-none"
               aria-invalid={Boolean(errors.visitAt)}
               {...form.register("visitAt")}
             />
             <FieldError errors={[errors.visitAt]} />
           </Field>
-          <fieldset className="grid gap-3 rounded-lg border p-3 sm:col-span-2">
+          <fieldset className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border p-3 sm:col-span-2">
             <legend className="px-1 text-sm font-medium">
               After the visit
               {!isAfterVisit(status) && (
@@ -161,7 +162,7 @@ export function ContactDialog({
               value={ratingField.field.value}
               onChange={ratingField.field.onChange}
             />
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="contact-pros">What I liked</FieldLabel>
                 <Textarea

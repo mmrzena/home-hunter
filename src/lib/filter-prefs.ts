@@ -26,6 +26,9 @@ let hidden: ReadonlySet<string> = EMPTY_HIDDEN;
 let query = "";
 let mode: "local" | "remote" = "local";
 let push: ((prefs: FilterPrefs) => void) | null = null;
+// Set once the user commits a query this session, so a toggle made before the
+// profile finished loading is not overwritten by the saved one on connect.
+let isQueryDirty = false;
 let hydrated = false;
 const listeners = new Set<() => void>();
 
@@ -87,6 +90,7 @@ export function toggleHiddenFilter(key: string) {
 
 /** Remember the filter query the bar just committed (the URL's search string). */
 export function rememberFilterQuery(next: string) {
+  isQueryDirty = true;
   if (next === query) return;
   query = next;
   persist();
@@ -96,18 +100,21 @@ export function rememberFilterQuery(next: string) {
  * Switch to remote mode: adopt the server prefs and route writes to `pusher`.
  * Returns the saved query so the caller can restore it into the URL. On a
  * reconnect (the feed remounted) the in-memory state is already the truth and
- * is kept.
+ * is kept. A query the user committed while the profile was still loading
+ * wins over the saved one and is pushed right away.
  */
 export function connectFilterPrefs(
   server: FilterPrefs | null,
   pusher: (prefs: FilterPrefs) => void,
 ): string {
-  if (mode !== "remote") {
-    hidden = new Set(server?.hidden ?? []);
-    query = server?.query ?? "";
-  }
+  const wasLocal = mode !== "remote";
   mode = "remote";
   push = pusher;
+  if (wasLocal) {
+    hidden = new Set(server?.hidden ?? []);
+    if (isQueryDirty) persist();
+    else query = server?.query ?? "";
+  }
   emit();
   return query;
 }
@@ -117,6 +124,7 @@ export function disconnectFilterPrefs() {
   mode = "local";
   push = null;
   query = "";
+  isQueryDirty = false;
   hidden = readLocalHidden();
   emit();
 }

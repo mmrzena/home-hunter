@@ -32,6 +32,8 @@ async function putPrefs(prefs: FilterPrefs): Promise<void> {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(prefs),
+    // A toggle right before closing the PWA must still reach the server.
+    keepalive: true,
   });
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
 }
