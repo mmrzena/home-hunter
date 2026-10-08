@@ -91,16 +91,22 @@ export async function ingestBatch(
       continue;
     }
     const [existing] = await sql<
-      { id: number; price: number | null; usable: number | null }[]
+      {
+        id: number;
+        price: number | null;
+        usable: number | null;
+        photos: string[];
+      }[]
     >`
-      SELECT id::int, price::float8, usable_area_m2 AS usable FROM listings
+      SELECT id::int, price::float8, usable_area_m2 AS usable, photos FROM listings
       WHERE source = ${raw.source} AND source_id = ${raw.sourceId} FOR UPDATE
     `;
     const shouldEnrich =
       source.name !== "bezrealitky" &&
       (!existing ||
         existing.price !== (askingPrice(raw.price) ?? null) ||
-        existing.usable === null);
+        existing.usable === null ||
+        source.needsRefresh?.(existing));
     let listing = raw;
     if (shouldEnrich) {
       enriched++;

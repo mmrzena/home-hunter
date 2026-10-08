@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  type RemixiconComponentType,
+  RiLayoutGridLine,
+  RiMapPinLine,
+  RiTableLine,
+} from "@remixicon/react";
 import { useState } from "react";
 
 import { AppHeader } from "@/components/app-header";
@@ -15,14 +21,33 @@ import {
   IS_DEV_WITHOUT_SIGN_IN,
   isContactStatus,
   isUpcomingVisit,
+  needsChaseUp,
   STATUS_ORDER,
 } from "@/lib/contacts";
+import { ChaseUpList } from "./chase-up-list";
+import { CompareTable } from "./compare-table";
 import { ContactCard } from "./contact-card";
+import { ContactsMap } from "./contacts-map";
 import { NoContactsEmpty } from "./no-contacts-empty";
 import { SignInEmpty } from "./sign-in-empty";
 import { UpcomingVisits } from "./upcoming-visits";
 
 type View = "all" | ContactStatus;
+
+const LAYOUTS = [
+  { value: "cards", label: "Cards", Icon: RiLayoutGridLine },
+  { value: "table", label: "Compare", Icon: RiTableLine },
+  { value: "map", label: "Map", Icon: RiMapPinLine },
+] as const satisfies readonly {
+  value: string;
+  label: string;
+  Icon: RemixiconComponentType;
+}[];
+type Layout = (typeof LAYOUTS)[number]["value"];
+
+function isLayout(value: string): value is Layout {
+  return LAYOUTS.some((layout) => layout.value === value);
+}
 
 /**
  * Pipeline order. Planned visits go soonest first, with not-yet-dated ones
@@ -44,6 +69,9 @@ export function ContactsScreen({ isAuthEnabled }: { isAuthEnabled: boolean }) {
   const { isAvailable, isSessionPending, canUse, contacts, isLoadingContacts } =
     useContactsState();
   const [view, setView] = useState<View>("all");
+  const [layout, setLayout] = useState<Layout>("cards");
+  // The card a map marker click jumps to (the cards layout scrolls to it).
+  const [focusedId, setFocusedId] = useState<number | null>(null);
   // One "now" per mount keeps upcoming/past stable across re-renders.
   const [now] = useState(Date.now);
 
@@ -56,6 +84,7 @@ export function ContactsScreen({ isAuthEnabled }: { isAuthEnabled: boolean }) {
     .sort(
       (left, right) => Date.parse(left.visitAt) - Date.parse(right.visitAt),
     );
+  const chaseUp = all.filter((contact) => needsChaseUp(contact, now));
   // A status tab that just emptied (its last house moved on) falls back to All.
   const effectiveView = view !== "all" && !counts.get(view) ? "all" : view;
   const shown =
@@ -84,36 +113,78 @@ export function ContactsScreen({ isAuthEnabled }: { isAuthEnabled: boolean }) {
     return (
       <div className="space-y-6">
         {upcoming.length > 0 && <UpcomingVisits visits={upcoming} now={now} />}
-        <ToggleGroup
-          type="single"
-          variant="outline"
-          size="sm"
-          value={effectiveView}
-          onValueChange={(next) => {
-            if (next === "all" || isContactStatus(next)) setView(next);
-          }}
-          className="flex-wrap"
-        >
-          <ToggleGroupItem value="all" className="h-8 text-xs">
-            All {all.length}
-          </ToggleGroupItem>
-          {CONTACT_STATUSES.filter((status) => counts.get(status)).map(
-            (status) => (
+        {chaseUp.length > 0 && <ChaseUpList contacts={chaseUp} now={now} />}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            value={effectiveView}
+            onValueChange={(next) => {
+              if (next === "all" || isContactStatus(next)) setView(next);
+            }}
+            className="flex-wrap"
+          >
+            <ToggleGroupItem value="all" className="h-8 text-xs">
+              All {all.length}
+            </ToggleGroupItem>
+            {CONTACT_STATUSES.filter((status) => counts.get(status)).map(
+              (status) => (
+                <ToggleGroupItem
+                  key={status}
+                  value={status}
+                  className="h-8 text-xs"
+                >
+                  {CONTACT_STATUS_LABEL[status]} {counts.get(status)}
+                </ToggleGroupItem>
+              ),
+            )}
+          </ToggleGroup>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            value={layout}
+            onValueChange={(next) => {
+              if (isLayout(next)) setLayout(next);
+            }}
+            aria-label="Layout"
+          >
+            {LAYOUTS.map(({ value, label, Icon }) => (
               <ToggleGroupItem
-                key={status}
-                value={status}
-                className="h-8 text-xs"
+                key={value}
+                value={value}
+                className="h-8 gap-1.5 text-xs"
+                aria-label={label}
               >
-                {CONTACT_STATUS_LABEL[status]} {counts.get(status)}
+                <Icon className="size-3.5" />
+                <span className="hidden sm:inline">{label}</span>
               </ToggleGroupItem>
-            ),
-          )}
-        </ToggleGroup>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {shown.map((contact) => (
-            <ContactCard key={contact.id} contact={contact} now={now} />
-          ))}
+            ))}
+          </ToggleGroup>
         </div>
+        {layout === "table" && <CompareTable contacts={shown} />}
+        {layout === "map" && (
+          <ContactsMap
+            contacts={shown}
+            onSelect={(id) => {
+              setFocusedId(id);
+              setLayout("cards");
+            }}
+          />
+        )}
+        {layout === "cards" && (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {shown.map((contact) => (
+              <ContactCard
+                key={contact.id}
+                contact={contact}
+                now={now}
+                isFocused={contact.id === focusedId}
+              />
+            ))}
+          </div>
+        )}
       </div>
     );
   }

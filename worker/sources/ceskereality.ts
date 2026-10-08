@@ -168,14 +168,32 @@ function parseGps(html: string): { lat?: number; lng?: number } {
   };
 }
 
-/** Gallery image URLs, normalized to one size so duplicates collapse. */
+// The detail gallery (fancybox) links the originals on img.ceskereality.cz,
+// one folder per listing: /foto/{folder}/{hh}/{hash}.jpg. The img-cache host
+// only serves the resized variants the page itself embeds (the hero, agent
+// portraits, "similar listings" thumbnails) — any other size 404s, so it's no
+// use for the rest of the gallery.
+const GALLERY_PHOTO_RE =
+  /https:\/\/img\.ceskereality\.cz\/foto\/(\d+)\/[^\s"'<>]+?\.jpe?g/gi;
+
+/**
+ * Galleries saved by the previous parser were img-cache URLs rewritten to a
+ * 640x640 variant that doesn't exist (404). The search-card thumbnail is also
+ * an img-cache URL but resolves, so only the rewrite marks a listing stale.
+ */
+function hasStaleGallery(stored: { photos: string[] }): boolean {
+  return stored.photos.some((url) =>
+    url.includes("img-cache.ceskereality.cz/nemovitosti/640x640_jpg/"),
+  );
+}
+
 function galleryPhotos(html: string, ldImage: unknown): string[] {
-  const raw = [
-    ...html.matchAll(
-      /https:\/\/img-cache\.ceskereality\.cz\/[^\s"'<>]+?\.jpg/g,
-    ),
-  ].map((match) => match[0].replace(/\/\d+x\d+_jpg\//, "/640x640_jpg/"));
-  if (typeof ldImage === "string") raw.unshift(ldImage);
+  const cover = typeof ldImage === "string" ? ldImage : undefined;
+  const coverFolder = cover?.match(/\/foto\/(\d+)\//)?.[1];
+  const gallery = [...html.matchAll(GALLERY_PHOTO_RE)]
+    .filter(([, folder]) => coverFolder === undefined || folder === coverFolder)
+    .map((match) => match[0]);
+  const raw = cover ? [cover, ...gallery] : gallery;
   return [...new Set(raw)].slice(0, env.MAX_IMAGES_PER_LISTING);
 }
 
@@ -277,6 +295,7 @@ export function createCeskeRealitySource(options: PageOptions = {}): Source {
     listPages,
     enrich,
     completed: () => didComplete,
+    needsRefresh: hasStaleGallery,
   };
 }
 

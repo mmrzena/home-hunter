@@ -1,17 +1,16 @@
 "use client";
 
 import "maplibre-gl/dist/maplibre-gl.css";
-import { RiMapPinLine } from "@remixicon/react";
 import maplibregl from "maplibre-gl";
-import { useTheme } from "next-themes";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
+import { MapUnavailable } from "@/components/map/map-unavailable";
+import { useMapLibre } from "@/components/map/use-maplibre";
 import { markerTone, TONE_HEX } from "@/lib/listing-status";
 import type { MapBounds } from "@/lib/map-bounds";
-import { DARK_MAP_STYLE, LIGHT_MAP_STYLE } from "@/lib/map-styles";
+import { createDotMarker } from "@/lib/map-markers";
+import { PRAGUE_CENTER } from "@/lib/map-styles";
 import type { AppConfig, ClusterCard } from "@/lib/types";
-
-const PRAGUE: [number, number] = [14.45, 50.0];
 
 export function ListingMap({
   clusters,
@@ -33,23 +32,17 @@ export function ListingMap({
   fitKey: string;
   anchor: AppConfig["anchor"];
 }) {
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
-  // Init reads the live theme without re-running its empty-dep effect.
-  const isDarkRef = useRef(isDark);
-  isDarkRef.current = isDark;
+  const { mapRef, isUnavailable } = useMapLibre(containerRef, {
+    center: PRAGUE_CENTER,
+    zoom: 8,
+  });
   const markersRef = useRef<Map<number, maplibregl.Marker>>(new Map());
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
   const onBoundsChangeRef = useRef(onBoundsChange);
   onBoundsChangeRef.current = onBoundsChange;
   const lastFitKey = useRef<string | null>(null);
-  // MapLibre needs WebGL; some machines (GPU blocklists, headless, locked-down
-  // VMs) can't provide it. Rather than crash the whole screen, fall back to a
-  // placeholder and let the feed carry on.
-  const [unavailable, setUnavailable] = useState(false);
 
   // Rebuild markers only when the visible set actually changes — its ids,
   // positions, and tones. Toggling triage recomputes the parent's array but
@@ -60,24 +53,10 @@ export function ListingMap({
     )
     .join("|");
 
-  // Init the map once.
   useEffect(() => {
-    if (!containerRef.current) return;
-    let map: maplibregl.Map;
-    try {
-      map = new maplibregl.Map({
-        container: containerRef.current,
-        style: isDarkRef.current ? DARK_MAP_STYLE : LIGHT_MAP_STYLE,
-        center: PRAGUE,
-        zoom: 8,
-        attributionControl: { compact: true },
-      });
-    } catch {
-      setUnavailable(true);
-      return;
-    }
-    map.addControl(new maplibregl.NavigationControl(), "top-right");
-    map.on("moveend", () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const handleMoveEnd = () => {
       const bounds = map.getBounds();
       onBoundsChangeRef.current([
         bounds.getWest(),
@@ -85,24 +64,12 @@ export function ListingMap({
         bounds.getEast(),
         bounds.getNorth(),
       ]);
-    });
-    mapRef.current = map;
-    // The map lives in a resizable panel; MapLibre only tracks window resizes,
-    // so observe the container and resize the canvas when the divider moves.
-    const observer = new ResizeObserver(() => map.resize());
-    observer.observe(containerRef.current);
-    return () => {
-      observer.disconnect();
-      map.remove();
-      mapRef.current = null;
     };
-  }, []);
-
-  // Swap the basemap when the theme toggles. DOM-based markers live outside the
-  // style, so they survive setStyle untouched.
-  useEffect(() => {
-    mapRef.current?.setStyle(isDark ? DARK_MAP_STYLE : LIGHT_MAP_STYLE);
-  }, [isDark]);
+    map.on("moveend", handleMoveEnd);
+    return () => {
+      map.off("moveend", handleMoveEnd);
+    };
+  }, [mapRef]);
 
   // Rebuild markers whenever the visible set changes (keyed by signature).
   // biome-ignore lint/correctness/useExhaustiveDependencies: rebuild is keyed on markerSignature, which captures the cluster content we read
@@ -117,18 +84,9 @@ export function ListingMap({
     let any = false;
     for (const card of clusters) {
       if (card.lat == null || card.lng == null) continue;
-      const element = document.createElement("button");
-      element.type = "button";
-      element.style.width = "16px";
-      element.style.height = "16px";
-      element.style.borderRadius = "9999px";
-      element.style.border = "2px solid white";
-      element.style.boxShadow = "0 1px 3px rgba(0,0,0,.4)";
-      element.style.cursor = "pointer";
-      element.style.backgroundColor = TONE_HEX[markerTone(card)];
-      element.addEventListener("click", (event) => {
-        event.stopPropagation();
-        onSelectRef.current(card.clusterId);
+      const element = createDotMarker({
+        color: TONE_HEX[markerTone(card)],
+        onClick: () => onSelectRef.current(card.clusterId),
       });
       const marker = new maplibregl.Marker({ element })
         .setLngLat([card.lng, card.lat])
@@ -190,17 +148,8 @@ export function ListingMap({
     });
   }, [selectedId]);
 
-  if (unavailable) {
-    return (
-      <div className="flex size-full flex-col items-center justify-center gap-2 bg-muted/40 p-6 text-center text-muted-foreground">
-        <RiMapPinLine className="size-7" />
-        <p className="max-w-xs text-sm">
-          Map needs WebGL, which isn't available here. The listing feed still
-          works fully.
-        </p>
-      </div>
-    );
-  }
+  if (isUnavailable)
+    return <MapUnavailable hint="The listing feed still works fully." />;
 
   return <div ref={containerRef} className="size-full" />;
 }

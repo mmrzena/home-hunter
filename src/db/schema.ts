@@ -3,10 +3,12 @@ import {
   bigserial,
   boolean,
   doublePrecision,
+  index,
   integer,
   jsonb,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   unique,
@@ -257,6 +259,9 @@ export const userTriage = pgTable(
   (table) => [primaryKey({ columns: [table.userId, table.clusterId] })],
 );
 
+/** Visit verdict, 1 ("no") to 5 ("would buy"). */
+export type Rating = 1 | 2 | 3 | 4 | 5;
+
 export type ContactStatus =
   | "contacted"
   | "visit_planned"
@@ -293,6 +298,9 @@ export const houseContacts = pgTable(
     contactEmail: text("contact_email"),
     visitAt: timestamp("visit_at", { withTimezone: true }),
     notes: text("notes"),
+    rating: smallint("rating").$type<Rating>(),
+    pros: text("pros"),
+    cons: text("cons"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -314,4 +322,29 @@ export type NewListing = typeof listings.$inferInsert;
 export type Cluster = typeof clusters.$inferSelect;
 export type Area = typeof areas.$inferSelect;
 export type UserTriageRow = typeof userTriage.$inferSelect;
+export type ContactEventKind = "saved" | "status" | "visit" | "rating";
+
+/** What happened to a contacted house and when — the card's history. */
+export const houseContactEvents = pgTable(
+  "house_contact_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    contactId: bigint("contact_id", { mode: "number" })
+      .notNull()
+      .references(() => houseContacts.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<ContactEventKind>().notNull(),
+    detail: text("detail"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("house_contact_events_contact_idx").on(
+      table.contactId,
+      table.createdAt,
+    ),
+  ],
+);
+
 export type HouseContactRow = typeof houseContacts.$inferSelect;
+export type HouseContactEventRow = typeof houseContactEvents.$inferSelect;

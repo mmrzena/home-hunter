@@ -103,6 +103,31 @@ test("České reality reads purchase price and explicit plot size, not numbers f
   );
 });
 
+test("České reality gallery is the listing's originals, cover first, never the cache host", () => {
+  const ld = JSON.stringify({
+    "@type": "individualProduct",
+    additionalType: "House",
+    name: "Prodej rodinného domu 97 m²",
+    image: "https://img.ceskereality.cz/foto/92794/f6/f6cover.jpg",
+    offers: {
+      "@type": "OfferForPurchase",
+      priceCurrency: "CZK",
+      price: 5_000_000,
+    },
+  });
+  const html = `<script type="application/ld+json">${ld}</script>
+    <img src="https://img-cache.ceskereality.cz/nemovitosti/1336x891_jpg/5049822/f6/f6cover.jpg">
+    <a href="https://img.ceskereality.cz/foto/92794/f6/f6cover.jpg" data-bg="https://img.ceskereality.cz/foto/92794/f6/f6cover.jpg"></a>
+    <a href="https://img.ceskereality.cz/foto/92794/b3/b3kitchen.jpg" data-bg="https://img.ceskereality.cz/foto/92794/b3/b3kitchen.jpg"></a>
+    <img src="https://img-cache.ceskereality.cz/makleri/208x208_jpg/5049822/108759.jpg">
+    <img src="https://img-cache.ceskereality.cz/nemovitosti/320x320_jpg/5046972/08/08similar.jpg">
+    <a href="https://img.ceskereality.cz/foto/11111/aa/aaother.jpg"></a>`;
+  assert.deepEqual(parseCeskeRealityDetail(html).photos, [
+    "https://img.ceskereality.cz/foto/92794/f6/f6cover.jpg",
+    "https://img.ceskereality.cz/foto/92794/b3/b3kitchen.jpg",
+  ]);
+});
+
 test("import refuses redirects to internal hosts without following them", async (context) => {
   let calls = 0;
   context.mock.method(globalThis, "fetch", async () => {

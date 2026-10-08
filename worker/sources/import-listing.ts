@@ -1,3 +1,4 @@
+import { readBodyCapped } from "../lib/http";
 import {
   ListingImportError,
   type ListingTarget,
@@ -45,23 +46,10 @@ async function fetchDetail(target: ListingTarget): Promise<string> {
           : "The portal could not be read right now. Please try again later.",
       );
     }
-    const reader = response.body?.getReader();
-    if (!reader) break;
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        size += value.byteLength;
-        if (size > MAX_BYTES)
-          throw new ListingImportError("This page is too large to analyse.");
-        chunks.push(value);
-      }
-    } finally {
-      await reader.cancel();
-    }
-    return Buffer.concat(chunks).toString("utf8");
+    const body = await readBodyCapped(response, MAX_BYTES);
+    if (!body)
+      throw new ListingImportError("This page is too large to analyse.");
+    return body.toString("utf8");
   }
   throw new ListingImportError(
     "The portal redirected away from this listing. Copy the current detail-page URL.",

@@ -7,6 +7,7 @@ import {
   RiArrowRightUpLine,
   RiBarChartBoxLine,
   RiBuilding2Line,
+  RiCalendarLine,
   RiCloseLine,
   RiExternalLinkLine,
   RiEyeLine,
@@ -19,6 +20,7 @@ import {
 import Link from "next/link";
 import { memo } from "react";
 import { ContactButton } from "@/components/contacts/contact-button";
+import { GalleryPhoto } from "@/components/gallery-photo";
 import { Badge } from "@/components/ui/badge";
 import {
   Carousel,
@@ -31,6 +33,8 @@ import { analyseHref } from "@/lib/analyse-href";
 import { houseFromCard } from "@/lib/contacts";
 import {
   formatArea,
+  formatDateAdded,
+  formatDateTime,
   formatDistance,
   formatKind,
   formatPerM2,
@@ -40,6 +44,7 @@ import {
   formatSource,
 } from "@/lib/format";
 import { statusBadge, TONE_BADGE } from "@/lib/listing-status";
+import { largePhoto } from "@/lib/photos";
 import type { ClusterCard as Card } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -257,48 +262,52 @@ export const ClusterCard = memo(function ClusterCard({
                 )}
               </div>
 
-              {(card.hub != null ||
-                card.nearestStationKm != null ||
-                card.population != null) && (
-                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                  {card.population != null && (
-                    <span
-                      className="flex items-center gap-1"
-                      title={card.settlementClass ?? undefined}
-                    >
-                      <RiGroupLine className="size-3.5 shrink-0" />
-                      <span className="font-mono">
-                        {formatPopulation(card.population)}
-                      </span>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                <span
+                  className="flex items-center gap-1"
+                  title={`Added ${formatDateTime(card.firstSeenAt)}`}
+                >
+                  <RiCalendarLine className="size-3.5 shrink-0" />
+                  <span className="font-mono">
+                    {formatDateAdded(card.firstSeenAt)}
+                  </span>
+                </span>
+                {card.population != null && (
+                  <span
+                    className="flex items-center gap-1"
+                    title={card.settlementClass ?? undefined}
+                  >
+                    <RiGroupLine className="size-3.5 shrink-0" />
+                    <span className="font-mono">
+                      {formatPopulation(card.population)}
                     </span>
-                  )}
-                  {card.hub != null && (
-                    <span className="flex items-center gap-1">
-                      <RiBuilding2Line className="size-3.5 shrink-0" />
-                      <span className="font-mono">
-                        {formatDistance(card.hub.km)}
-                      </span>{" "}
-                      to {card.hub.label}
+                  </span>
+                )}
+                {card.hub != null && (
+                  <span className="flex items-center gap-1">
+                    <RiBuilding2Line className="size-3.5 shrink-0" />
+                    <span className="font-mono">
+                      {formatDistance(card.hub.km)}
+                    </span>{" "}
+                    to {card.hub.label}
+                  </span>
+                )}
+                {card.nearestStationKm != null && (
+                  <span
+                    className={cn(
+                      "flex items-center gap-1",
+                      card.nearestStationKm <= CLOSE_TO_TRAIN_KM &&
+                        "font-medium text-green-700 dark:text-green-400",
+                    )}
+                  >
+                    <RiTrainLine className="size-3.5 shrink-0" />
+                    <span className="font-mono">
+                      {formatDistance(card.nearestStationKm)}
                     </span>
-                  )}
-                  {card.nearestStationKm != null && (
-                    <span
-                      className={cn(
-                        "flex items-center gap-1",
-                        card.nearestStationKm <= CLOSE_TO_TRAIN_KM &&
-                          "font-medium text-green-700 dark:text-green-400",
-                      )}
-                    >
-                      <RiTrainLine className="size-3.5 shrink-0" />
-                      <span className="font-mono">
-                        {formatDistance(card.nearestStationKm)}
-                      </span>
-                      {card.nearestStationName &&
-                        ` · ${card.nearestStationName}`}
-                    </span>
-                  )}
-                </div>
-              )}
+                    {card.nearestStationName && ` · ${card.nearestStationName}`}
+                  </span>
+                )}
+              </div>
 
               <div className="mt-1.5">
                 <PercentileMeter
@@ -448,12 +457,9 @@ export const ClusterCard = memo(function ClusterCard({
                 <CarouselContent>
                   {card.photos.map((src) => (
                     <CarouselItem key={src}>
-                      {/* biome-ignore lint/performance/noImgElement: hot-linked CDN thumbnail */}
-                      <img
-                        src={src}
-                        alt=""
-                        loading="lazy"
-                        className="h-44 w-full rounded-md bg-muted object-cover"
+                      <GalleryPhoto
+                        src={largePhoto(src)}
+                        className="h-44 w-full rounded-md"
                       />
                     </CarouselItem>
                   ))}

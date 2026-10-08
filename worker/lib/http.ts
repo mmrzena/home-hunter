@@ -162,7 +162,41 @@ export async function getText(
   throw lastError;
 }
 
-/** GET an image as a Buffer (for in-memory hashing). Returns null on failure. */
+/**
+ * Read a response body up to `maxBytes`; past the cap the download is cancelled
+ * and null returned, so an oversized body never sits in memory.
+ */
+export async function readBodyCapped(
+  response: Response,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  if (Number(response.headers.get("content-length")) > maxBytes) {
+    await response.body?.cancel();
+    return null;
+  }
+  const reader = response.body?.getReader();
+  if (!reader) return null;
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) return null;
+      chunks.push(value);
+    }
+  } finally {
+    await reader.cancel();
+  }
+  return Buffer.concat(chunks);
+}
+
+// Portals that link full-size originals (České reality) serve ~1 MB photos;
+// anything far beyond that is not a listing photo worth holding in memory.
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+/** GET an image as a Buffer (for in-memory hashing). Null on failure or past the cap. */
 export async function getImageBuffer(url: string): Promise<Buffer | null> {
   try {
     const response = await fetch(url, {
@@ -170,7 +204,7 @@ export async function getImageBuffer(url: string): Promise<Buffer | null> {
       headers: { "User-Agent": USER_AGENT },
     });
     if (!response.ok) return null;
-    return Buffer.from(await response.arrayBuffer());
+    return await readBodyCapped(response, MAX_IMAGE_BYTES);
   } catch {
     return null;
   }

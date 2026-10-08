@@ -71,3 +71,62 @@ export function formatTransfers(transfers: number): string {
   if (transfers === 0) return "direct";
   return transfers === 1 ? "1 change" : `${transfers} changes`;
 }
+
+// Pinned to Prague time so server-rendered dates match the client exactly
+// (a UTC server and a local browser would otherwise disagree around midnight).
+const TIME_ZONE = "Europe/Prague";
+const dayMonth = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  timeZone: TIME_ZONE,
+});
+const dayMonthYear = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: TIME_ZONE,
+});
+const dateTime = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: TIME_ZONE,
+});
+const yearOf = new Intl.DateTimeFormat("en-GB", {
+  year: "numeric",
+  timeZone: TIME_ZONE,
+});
+
+const visitDateTime = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: TIME_ZONE,
+});
+
+/** "8 Oct" in Prague time. */
+export function formatDayMonth(iso: string): string {
+  return dayMonth.format(new Date(iso));
+}
+
+/** "Fri 9 Oct, 10:00" in Prague time — a visit slot. */
+export function formatVisit(iso: string): string {
+  return visitDateTime.format(new Date(iso));
+}
+
+/** "8 Oct" within the current year, "8 Oct 2025" otherwise. */
+export function formatDateAdded(iso: string): string {
+  const date = new Date(iso);
+  return yearOf.format(date) === yearOf.format(new Date())
+    ? dayMonth.format(date)
+    : dayMonthYear.format(date);
+}
+
+/** "8 Oct 2026, 14:05" in Prague time. */
+export function formatDateTime(iso: string): string {
+  return dateTime.format(new Date(iso));
+}

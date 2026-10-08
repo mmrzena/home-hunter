@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useController, useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,9 @@ import {
   CONTACT_STATUSES,
   type ContactDetails,
   type ContactHouse,
+  isAfterVisit,
 } from "@/lib/contacts";
+import { RatingPicker } from "./rating-picker";
 import { useSaveContact } from "./use-contacts";
 
 // The form edits the visit in the browser's local time (datetime-local).
@@ -63,6 +65,8 @@ export function ContactDialog({
     defaultValues: { ...initial, visitAt: toLocalInput(initial.visitAt) },
   });
   const { errors } = form.formState;
+  const ratingField = useController({ name: "rating", control: form.control });
+  const status = useWatch({ name: "status", control: form.control });
 
   function handleSubmit(values: FormValues) {
     save.mutate(
@@ -141,6 +145,40 @@ export function ContactDialog({
             />
             <FieldError errors={[errors.visitAt]} />
           </Field>
+          <fieldset className="grid gap-3 rounded-lg border p-3 sm:col-span-2">
+            <legend className="px-1 text-sm font-medium">
+              After the visit
+              {!isAfterVisit(status) && (
+                <span className="ml-1 font-normal text-muted-foreground">
+                  (optional until you've been there)
+                </span>
+              )}
+            </legend>
+            <RatingPicker
+              value={ratingField.field.value}
+              onChange={ratingField.field.onChange}
+            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="contact-pros">What I liked</FieldLabel>
+                <Textarea
+                  id="contact-pros"
+                  rows={3}
+                  placeholder="Quiet street, south-facing garden, new roof"
+                  {...form.register("pros")}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="contact-cons">What bothered me</FieldLabel>
+                <Textarea
+                  id="contact-cons"
+                  rows={3}
+                  placeholder="Damp cellar, 15 min walk to the station"
+                  {...form.register("cons")}
+                />
+              </Field>
+            </div>
+          </fieldset>
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="contact-notes">Notes</FieldLabel>
             <Textarea

@@ -1,13 +1,17 @@
 "use client";
 
 import {
+  RiAlarmWarningLine,
   RiBarChartBoxLine,
   RiCalendarEventLine,
+  RiCalendarLine,
   RiDeleteBinLine,
   RiExternalLinkLine,
+  RiHistoryLine,
   RiHome4Line,
   RiMailLine,
   RiMore2Line,
+  RiNavigationLine,
   RiPencilLine,
   RiPhoneLine,
   RiUser3Line,
@@ -16,10 +20,12 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { ContactDialog } from "@/components/contacts/contact-dialog";
+import { RatingStars } from "@/components/contacts/rating-stars";
 import {
   useDeleteContact,
   useSaveContact,
 } from "@/components/contacts/use-contacts";
+import { GalleryPhoto } from "@/components/gallery-photo";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,6 +38,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,60 +57,109 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { ContactStatus } from "@/db/schema";
 import { analyseHref } from "@/lib/analyse-href";
+import { STATUS_DOT } from "@/lib/contact-status-style";
 import {
   CONTACT_STATUS_LABEL,
   CONTACT_STATUSES,
   type Contact,
+  type ContactEvent,
+  currentPriceChange,
+  daysSinceActivity,
   detailsOf,
+  EVENT_LABEL,
   houseOf,
+  isAfterVisit,
   isContactStatus,
+  isRating,
   isUpcomingVisit,
+  navigateHref,
+  needsChaseUp,
+  RATING_LABEL,
   telHref,
 } from "@/lib/contacts";
-import { formatPrice, formatSource } from "@/lib/format";
+import {
+  formatArea,
+  formatDayMonth,
+  formatDistance,
+  formatPrice,
+  formatSource,
+  formatVisit,
+} from "@/lib/format";
+import {
+  DEAL_VERDICT_LABEL,
+  percentileTone,
+  TONE_BADGE,
+} from "@/lib/listing-status";
 import { largePhoto } from "@/lib/photos";
 import { cn } from "@/lib/utils";
-
-const STATUS_DOT: Record<ContactStatus, string> = {
-  contacted: "bg-muted-foreground",
-  visit_planned: "bg-primary",
-  visited: "bg-blueGrey-500",
-  offer: "bg-success",
-  rejected: "bg-destructive/60",
-};
-
-const VISIT = new Intl.DateTimeFormat("en-GB", {
-  weekday: "short",
-  day: "numeric",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
+import { visitIcsHref } from "@/lib/visit-ics";
 
 function advertState(contact: Contact): string | null {
   if (!contact.current) return null;
   if (!contact.current.isActive) return "Advert removed";
-  const { price } = contact.current;
-  if (price && contact.price && price !== contact.price)
-    return `Now ${formatPrice(price)}`;
-  return null;
+  const priceNow = currentPriceChange(contact);
+  return priceNow == null ? null : `Now ${formatPrice(priceNow)}`;
+}
+
+/** "12th pct · fair price" from the pipeline's current view of the advert. */
+function marketLine(contact: Contact): { text: string; tone: string } | null {
+  const current = contact.current;
+  if (!current || current.percentile == null) return null;
+  const verdict = DEAL_VERDICT_LABEL[current.dealVerdict ?? "fair"];
+  return {
+    text: `${Math.round(current.percentile)}th pct · ${verdict.toLowerCase()}`,
+    tone: TONE_BADGE[percentileTone(current.percentile)],
+  };
+}
+
+/** A history event's stored raw value, as the user reads it. */
+function eventDetail(event: ContactEvent): string | null {
+  if (event.detail === null) return null;
+  switch (event.kind) {
+    case "status":
+      return isContactStatus(event.detail)
+        ? CONTACT_STATUS_LABEL[event.detail]
+        : event.detail;
+    case "visit":
+      return event.detail === "" ? "Cancelled" : formatVisit(event.detail);
+    case "rating": {
+      const rating = Number(event.detail);
+      return isRating(rating) ? RATING_LABEL[rating] : "Cleared";
+    }
+    default:
+      return event.detail;
+  }
 }
 
 export function ContactCard({
   contact,
   now,
+  isFocused = false,
 }: {
   contact: Contact;
   now: number;
+  /** Scrolls the card into view when it mounts (a map marker was clicked). */
+  isFocused?: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const save = useSaveContact();
   const remove = useDeleteContact();
+  const current = contact.current;
   const state = advertState(contact);
+  const market = marketLine(contact);
   const isRejected = contact.status === "rejected";
+  const navigate = navigateHref(contact);
+  const isChaseUp = needsChaseUp(contact, now);
+  const wantsVerdict = contact.rating == null && isAfterVisit(contact.status);
+  const facts = [
+    current?.usableAreaM2 != null &&
+      `${formatArea(current.usableAreaM2)} usable`,
+    current?.landAreaM2 != null && `${formatArea(current.landAreaM2)} plot`,
+    current?.hub != null &&
+      `${formatDistance(current.hub.km)} to ${current.hub.label}`,
+  ].filter((fact): fact is string => typeof fact === "string");
 
   function handleStatusChange(status: string) {
     if (isContactStatus(status))
@@ -108,29 +168,33 @@ export function ContactCard({
 
   return (
     <article
+      ref={(element) => {
+        if (isFocused) element?.scrollIntoView({ block: "start" });
+      }}
       className={cn(
-        "flex flex-col overflow-hidden rounded-xl border bg-card transition-opacity",
+        "flex scroll-mt-24 flex-col overflow-hidden rounded-xl border bg-card transition-opacity",
         isRejected && "opacity-60 hover:opacity-100",
       )}
     >
       <div className="relative aspect-[16/9] bg-muted">
         {contact.photo ? (
-          // biome-ignore lint/performance/noImgElement: remote portal photos, as on feed cards
-          <img
+          <GalleryPhoto
             src={largePhoto(contact.photo)}
-            alt=""
-            loading="lazy"
-            className="absolute inset-0 size-full object-cover"
+            className="absolute inset-0 size-full"
           />
         ) : (
           <div className="flex size-full items-center justify-center text-muted-foreground">
             <RiHome4Line className="size-8" />
           </div>
         )}
-        {state && (
-          <Badge className="absolute top-2 left-2" variant="secondary">
-            {state}
-          </Badge>
+        <div className="absolute top-2 left-2 flex flex-wrap gap-1">
+          {state && <Badge variant="secondary">{state}</Badge>}
+          {market && <Badge className={market.tone}>{market.text}</Badge>}
+        </div>
+        {contact.rating != null && (
+          <div className="absolute right-2 bottom-2 rounded-full bg-background/90 px-2 py-1 font-medium">
+            <RatingStars rating={contact.rating} />
+          </div>
         )}
       </div>
 
@@ -146,6 +210,11 @@ export function ContactCard({
             >
               {contact.title ?? contact.url}
             </Link>
+            {facts.length > 0 && (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {facts.join(" · ")}
+              </p>
+            )}
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -164,6 +233,23 @@ export function ContactCard({
                   <RiExternalLinkLine /> Open on {formatSource(contact.source)}
                 </a>
               </DropdownMenuItem>
+              {navigate && (
+                <DropdownMenuItem asChild>
+                  <a href={navigate} target="_blank" rel="noreferrer">
+                    <RiNavigationLine /> Navigate there
+                  </a>
+                </DropdownMenuItem>
+              )}
+              {contact.visitAt && (
+                <DropdownMenuItem asChild>
+                  <a
+                    href={visitIcsHref(contact)}
+                    download={`visit-${contact.id}.ics`}
+                  >
+                    <RiCalendarLine /> Add visit to calendar
+                  </a>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onSelect={() => setIsEditing(true)}>
                 <RiPencilLine /> Edit notes
               </DropdownMenuItem>
@@ -194,6 +280,14 @@ export function ContactCard({
           </SelectContent>
         </Select>
 
+        {isChaseUp && (
+          <p className="flex items-center gap-2 rounded-md bg-warning/15 px-2 py-1.5 text-xs text-warning-foreground">
+            <RiAlarmWarningLine className="size-4 shrink-0" />
+            No activity for {daysSinceActivity(contact, now)} days. Chase them
+            up?
+          </p>
+        )}
+
         <dl className="space-y-1.5 text-sm">
           {contact.visitAt && (
             <div
@@ -206,7 +300,7 @@ export function ContactCard({
             >
               <dt className="sr-only">Visit</dt>
               <RiCalendarEventLine className="size-4 shrink-0" />
-              <dd>{VISIT.format(new Date(contact.visitAt))}</dd>
+              <dd>{formatVisit(contact.visitAt)}</dd>
             </div>
           )}
           {contact.contactName && (
@@ -246,6 +340,21 @@ export function ContactCard({
           )}
         </dl>
 
+        {(contact.pros || contact.cons) && (
+          <div className="grid gap-1 text-sm">
+            {contact.pros && (
+              <p className="line-clamp-2 text-green-700 dark:text-green-400">
+                + {contact.pros}
+              </p>
+            )}
+            {contact.cons && (
+              <p className="line-clamp-2 text-red-700 dark:text-red-400">
+                − {contact.cons}
+              </p>
+            )}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={() => setIsEditing(true)}
@@ -255,8 +364,38 @@ export function ContactCard({
             contact.notes ? "line-clamp-3 whitespace-pre-line" : "w-fit",
           )}
         >
-          {contact.notes || "+ Add contact details or notes"}
+          {contact.notes ||
+            (wantsVerdict
+              ? "+ How was the visit? Add your verdict"
+              : "+ Add contact details or notes")}
         </button>
+
+        {contact.events.length > 0 && (
+          <Collapsible>
+            <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+              <RiHistoryLine className="size-3.5" />
+              History · {contact.events.length}
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ol className="mt-2 space-y-1 border-l pl-3 text-xs text-muted-foreground">
+                {[...contact.events].reverse().map((event) => {
+                  const detail = eventDetail(event);
+                  return (
+                    <li key={event.id} className="flex gap-2">
+                      <span className="w-12 shrink-0 font-mono">
+                        {formatDayMonth(event.createdAt)}
+                      </span>
+                      <span>
+                        {EVENT_LABEL[event.kind]}
+                        {detail && `: ${detail}`}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
 
         <div className="mt-auto flex gap-2 pt-1">
           <Button

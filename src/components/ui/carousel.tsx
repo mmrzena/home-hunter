@@ -76,10 +76,10 @@ function Carousel({
 
   const handleKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (event.key === "RiArrowLeftLine") {
+      if (event.key === "ArrowLeft") {
         event.preventDefault();
         scrollPrev();
-      } else if (event.key === "RiArrowRightLine") {
+      } else if (event.key === "ArrowRight") {
         event.preventDefault();
         scrollNext();
       }

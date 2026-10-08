@@ -54,3 +54,11 @@ export function nearestHub(lat: number, lng: number): HubDistance {
     km: haversineKm(lat, lng, prague.lat, prague.lng),
   };
 }
+
+/** `nearestHub` for coordinates that may be missing. */
+export function hubFor(
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+): HubDistance | null {
+  return lat != null && lng != null ? nearestHub(lat, lng) : null;
+}

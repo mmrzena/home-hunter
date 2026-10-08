@@ -1,6 +1,13 @@
+import type { DealVerdict } from "@/db/schema";
 import type { ClusterCard } from "@/lib/types";
 
 export type Tone = "deal" | "overpriced" | "caution" | "fair";
+
+export const DEAL_VERDICT_LABEL: Record<DealVerdict, string> = {
+  deal: "Below average",
+  fair: "Fair price",
+  overpriced: "Overpriced",
+};
 
 /** The single headline status for a listing (caution wins, then deal, then overpriced). */
 export function statusBadge(
@@ -10,9 +17,9 @@ export function statusBadge(
     return { label: `Caution · risk ${card.scamScore}/100`, tone: "caution" };
   if (card.isGoodDeal) return { label: "Good deal", tone: "deal" };
   if (card.dealVerdict === "overpriced")
-    return { label: "Overpriced", tone: "overpriced" };
+    return { label: DEAL_VERDICT_LABEL.overpriced, tone: "overpriced" };
   if (card.dealVerdict === "deal")
-    return { label: "Below average", tone: "deal" };
+    return { label: DEAL_VERDICT_LABEL.deal, tone: "deal" };
   return null;
 }
 

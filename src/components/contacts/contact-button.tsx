@@ -21,6 +21,9 @@ const EMPTY_DETAILS: ContactDetails = {
   contactEmail: "",
   visitAt: "",
   notes: "",
+  rating: null,
+  pros: "",
+  cons: "",
 };
 
 /**

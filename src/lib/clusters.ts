@@ -1,6 +1,6 @@
 import { sql } from "@/db";
 import { anchor, env } from "@/lib/env";
-import { nearestHub } from "@/lib/hubs";
+import { hubFor } from "@/lib/hubs";
 import { placeInfo } from "@/lib/places";
 import { nearestStation } from "@/lib/stations";
 import type { ClusterCard, SortKey } from "@/lib/types";
@@ -107,8 +107,7 @@ function toCard(row: any): ClusterCard {
     sellerName: row.seller_name,
     sellerType: row.seller_type,
     distanceKm: row.distance_km,
-    hub:
-      row.lat != null && row.lng != null ? nearestHub(row.lat, row.lng) : null,
+    hub: hubFor(row.lat, row.lng),
     nearestStationKm: station?.km ?? null,
     nearestStationName: station?.name ?? null,
     population: place.population,

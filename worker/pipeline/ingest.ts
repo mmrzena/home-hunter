@@ -64,7 +64,7 @@ async function ingestSource(
     summary.seen += 1;
 
     const existing = await db.query.listings.findFirst({
-      columns: { id: true, price: true, usableAreaM2: true },
+      columns: { id: true, price: true, usableAreaM2: true, photos: true },
       where: and(
         eq(listings.source, raw.source),
         eq(listings.sourceId, raw.sourceId),
@@ -98,9 +98,11 @@ async function ingestSource(
           propertyKind: raw.propertyKind,
           url: raw.url,
         }),
-        photos: raw.photos ?? [],
-        // labels are set on insert + refreshed by enrich, not by the list pass
-        // (Sreality's list level carries none — refreshing here would wipe them).
+        // Bezrealitky's list pass carries the full gallery; elsewhere it's a
+        // search thumbnail that must not erase the detail gallery. Labels are
+        // likewise set on insert + refreshed by enrich (Sreality's list level
+        // carries none — refreshing here would wipe them).
+        ...(source.name === "bezrealitky" && { photos: raw.photos ?? [] }),
         lastSeenAt: runStartedAt,
         isActive: true,
       })
@@ -111,7 +113,11 @@ async function ingestSource(
         .insert(priceHistory)
         .values({ listingId: existing.id, price: raw.price });
     }
-    if (priceChanged || existing.usableAreaM2 == null)
+    if (
+      priceChanged ||
+      existing.usableAreaM2 == null ||
+      source.needsRefresh?.(existing)
+    )
       toEnrich.push(raw.sourceId);
     summary.updated += 1;
   }

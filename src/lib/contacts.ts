@@ -1,7 +1,14 @@
 import { z } from "zod";
-import type { ContactStatus, SourceName } from "@/db/schema";
+import type {
+  ContactEventKind,
+  ContactStatus,
+  DealVerdict,
+  Rating,
+  SourceName,
+} from "@/db/schema";
 import type { HouseAnalysis } from "@/lib/analysis-types";
 import { formatArea, formatKind } from "@/lib/format";
+import type { HubDistance } from "@/lib/hubs";
 import type { ClusterCard } from "@/lib/types";
 
 /**
@@ -45,6 +52,9 @@ export type ContactHouse = z.infer<typeof CONTACT_HOUSE>;
 
 const optionalText = (max: number) => z.string().trim().max(max);
 
+/** Visit verdict steps, from "No" to "Would buy". */
+export const RATINGS = [1, 2, 3, 4, 5] as const satisfies readonly Rating[];
+
 /** What the form edits. Empty strings mean "not filled in". */
 export const CONTACT_DETAILS = z.object({
   status: z.enum(CONTACT_STATUSES),
@@ -53,20 +63,97 @@ export const CONTACT_DETAILS = z.object({
   contactEmail: z.union([z.literal(""), z.email().max(200)]),
   visitAt: z.union([z.literal(""), z.iso.datetime({ offset: true })]),
   notes: optionalText(10_000),
+  /** Null until you've been there. */
+  rating: z.literal(RATINGS).nullable(),
+  pros: optionalText(2_000),
+  cons: optionalText(2_000),
 });
 export type ContactDetails = z.infer<typeof CONTACT_DETAILS>;
 
 export const CONTACT_SAVE = CONTACT_DETAILS.extend({ house: CONTACT_HOUSE });
 export type ContactSave = z.infer<typeof CONTACT_SAVE>;
 
+/** The advert as the pipeline sees it now. */
+export type ContactCurrent = {
+  price: number | null;
+  isActive: boolean;
+  percentile: number | null;
+  dealVerdict: DealVerdict | null;
+  usableAreaM2: number | null;
+  landAreaM2: number | null;
+  /** Straight-line distance to the town it's lived from, as on feed cards. */
+  hub: HubDistance | null;
+};
+
+export type ContactEvent = {
+  id: number;
+  kind: ContactEventKind;
+  detail: string | null;
+  createdAt: string;
+};
+
 export type Contact = ContactHouse &
   ContactDetails & {
     id: number;
     createdAt: string;
     updatedAt: string;
-    /** The advert as the pipeline sees it now; null when it was never crawled. */
-    current: { price: number | null; isActive: boolean } | null;
+    /** Null when the advert was never crawled (added by URL only). */
+    current: ContactCurrent | null;
+    /** Oldest first. */
+    events: ContactEvent[];
   };
+
+export const RATING_LABEL: Record<Rating, string> = {
+  1: "No",
+  2: "Unlikely",
+  3: "Maybe",
+  4: "Likely",
+  5: "Would buy",
+};
+
+export const EVENT_LABEL: Record<ContactEventKind, string> = {
+  saved: "Added to contacted",
+  status: "Status",
+  visit: "Visit",
+  rating: "Verdict",
+};
+
+// A "contacted" house with no activity for this long needs a nudge.
+export const CHASE_UP_AFTER_MS = 7 * 86_400_000;
+
+export function needsChaseUp(contact: Contact, now: number): boolean {
+  return (
+    contact.status === "contacted" &&
+    now - Date.parse(contact.updatedAt) >= CHASE_UP_AFTER_MS
+  );
+}
+
+export function isRating(value: number): value is Rating {
+  return RATINGS.some((rating) => rating === value);
+}
+
+export function daysSinceActivity(contact: Contact, now: number): number {
+  return Math.floor((now - Date.parse(contact.updatedAt)) / 86_400_000);
+}
+
+/** Statuses where a verdict (rating, pros, cons) is expected. */
+export function isAfterVisit(status: ContactStatus): boolean {
+  return status === "visited" || status === "offer";
+}
+
+/** The advert's current asking price when it moved since you saved it. */
+export function currentPriceChange(contact: Contact): number | null {
+  const price = contact.current?.price;
+  return price && contact.price && price !== contact.price ? price : null;
+}
+
+/** Directions to the house in whichever maps app the device prefers. */
+export function navigateHref(
+  house: Pick<ContactHouse, "lat" | "lng">,
+): string | null {
+  if (house.lat == null || house.lng == null) return null;
+  return `https://www.google.com/maps/dir/?api=1&destination=${house.lat},${house.lng}`;
+}
 
 /**
  * `next dev` only: contacts work without sign-in, saved under one local user,
@@ -105,6 +192,9 @@ export function detailsOf(contact: Contact): ContactDetails {
     contactEmail: contact.contactEmail,
     visitAt: contact.visitAt,
     notes: contact.notes,
+    rating: contact.rating,
+    pros: contact.pros,
+    cons: contact.cons,
   };
 }
 

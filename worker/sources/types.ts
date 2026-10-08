@@ -73,4 +73,6 @@ export interface Source {
   enrich(sourceId: string, url?: string): Promise<Partial<RawListing>>;
   /** True once listPages paginated to completion (didn't hit the page cap). */
   completed(): boolean;
+  /** A stored listing whose detail should be fetched again (e.g. a gallery saved by an older parser). */
+  needsRefresh?(stored: { photos: string[] }): boolean;
 }
