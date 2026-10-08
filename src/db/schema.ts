@@ -322,7 +322,12 @@ export type NewListing = typeof listings.$inferInsert;
 export type Cluster = typeof clusters.$inferSelect;
 export type Area = typeof areas.$inferSelect;
 export type UserTriageRow = typeof userTriage.$inferSelect;
-export type ContactEventKind = "saved" | "status" | "visit" | "rating";
+export type ContactEventKind =
+  | "saved"
+  | "status"
+  | "visit"
+  | "rating"
+  | "followed_up";
 
 /** What happened to a contacted house and when — the card's history. */
 export const houseContactEvents = pgTable(

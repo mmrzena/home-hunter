@@ -116,6 +116,7 @@ export const EVENT_LABEL: Record<ContactEventKind, string> = {
   status: "Status",
   visit: "Visit",
   rating: "Verdict",
+  followed_up: "Followed up",
 };
 
 // A "contacted" house with no activity for this long needs a nudge.

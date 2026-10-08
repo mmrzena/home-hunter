@@ -6,6 +6,7 @@
 
 import { and, asc, desc, eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
 import { db, houseContactEvents, houseContacts, listings, user } from "@/db";
 import type { HouseContactEventRow, HouseContactRow } from "@/db/schema";
@@ -217,6 +218,33 @@ export async function PUT(request: NextRequest) {
     return saved;
   });
   return NextResponse.json({ contact: toContact(row, null, []) });
+}
+
+const FOLLOW_UP = z.object({ id: z.number().int() });
+
+/** "I chased them up" — logs the nudge and resets the waiting-for-a-reply clock. */
+export async function POST(request: NextRequest) {
+  const userId = await getUserId(request);
+  if (!userId) return unauthorized();
+  const parsed = FOLLOW_UP.safeParse(await request.json().catch(() => null));
+  if (!parsed.success)
+    return NextResponse.json({ error: "Bad request" }, { status: 400 });
+  const { id } = parsed.data;
+  const touched = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(houseContacts)
+      .set({ updatedAt: new Date() })
+      .where(and(eq(houseContacts.id, id), eq(houseContacts.userId, userId)))
+      .returning({ id: houseContacts.id });
+    if (!row) return false;
+    await tx
+      .insert(houseContactEvents)
+      .values({ contactId: row.id, kind: "followed_up", detail: null });
+    return true;
+  });
+  if (!touched)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(request: NextRequest) {

@@ -81,8 +81,11 @@ export function ContactDialog({
 
   return (
     <Dialog open onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        className="inset-0 flex max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 sm:inset-auto sm:top-1/2 sm:left-1/2 sm:max-h-[calc(100dvh-2rem)] sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg"
+      >
+        <DialogHeader className="shrink-0 border-b px-4 py-3 pr-12 text-left sm:px-6 sm:py-4">
           <DialogTitle>Contact notes</DialogTitle>
           <DialogDescription className="truncate">
             {house.title ?? house.url}
@@ -91,7 +94,7 @@ export function ContactDialog({
         <form
           id="contact-form"
           onSubmit={form.handleSubmit(handleSubmit)}
-          className="grid gap-4 sm:grid-cols-2"
+          className="grid min-h-0 flex-1 gap-4 overflow-y-auto overscroll-contain p-4 sm:grid-cols-2 sm:p-6"
         >
           <Field className="sm:col-span-2">
             <FieldLabel htmlFor="contact-status">Status</FieldLabel>
@@ -190,7 +193,7 @@ export function ContactDialog({
             <FieldError errors={[errors.notes]} />
           </Field>
         </form>
-        <DialogFooter>
+        <DialogFooter className="shrink-0 border-t p-4 sm:px-6">
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>

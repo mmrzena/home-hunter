@@ -34,6 +34,21 @@ export function useSaveContact() {
   });
 }
 
+/** Logs a chase-up on a contact, which also takes it off the waiting list. */
+export function useFollowUp() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      fetchJson("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: CONTACTS_KEY }),
+    meta: { errorMessage: "Couldn't log the follow-up." },
+  });
+}
+
 export function useDeleteContact() {
   const queryClient = useQueryClient();
   return useMutation({
