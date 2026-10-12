@@ -6,16 +6,19 @@ import { useEffect, useRef } from "react";
 
 import { MapUnavailable } from "@/components/map/map-unavailable";
 import { useMapLibre } from "@/components/map/use-maplibre";
-import {
-  LIKED_HEX,
-  markerTone,
-  SEEN_HEX,
-  TONE_HEX,
-} from "@/lib/listing-status";
+import { type MarkerKind, markerKind } from "@/lib/listing-status";
 import type { MapBounds } from "@/lib/map-bounds";
-import { createDotMarker } from "@/lib/map-markers";
+import { createListingMarker } from "@/lib/map-markers";
 import { PRAGUE_CENTER } from "@/lib/map-styles";
 import type { AppConfig, ClusterCard } from "@/lib/types";
+
+// Later markers paint on top, so what you care about is never buried.
+const STACK_ORDER: Record<MarkerKind, number> = {
+  seen: 0,
+  other: 1,
+  deal: 2,
+  liked: 3,
+};
 
 export function ListingMap({
   clusters,
@@ -30,9 +33,7 @@ export function ListingMap({
   anchor,
 }: {
   clusters: ClusterCard[];
-  /** Drawn in rose instead of their price tone. */
   likedIds: ReadonlySet<number>;
-  /** Drawn as small grey dots instead of their price tone. */
   seenIds: ReadonlySet<number>;
   selectedId: number | null;
   hoveredId: number | null;
@@ -63,16 +64,13 @@ export function ListingMap({
   // Rebuild markers only when the visible set actually changes — its ids,
   // positions, and tones. Toggling triage recomputes the parent's array but
   // leaves this signature identical, so the map stays put.
-  const markerColor = (card: ClusterCard) => {
-    if (likedIds.has(card.clusterId)) return LIKED_HEX;
-    if (seenIds.has(card.clusterId)) return SEEN_HEX;
-    return TONE_HEX[markerTone(card)];
-  };
+  const kindOf = (card: ClusterCard) =>
+    markerKind(card, {
+      isLiked: likedIds.has(card.clusterId),
+      isSeen: seenIds.has(card.clusterId),
+    });
   const markerSignature = clusters
-    .map(
-      (card) =>
-        `${card.clusterId}@${card.lng},${card.lat}:${markerColor(card)}`,
-    )
+    .map((card) => `${card.clusterId}@${card.lng},${card.lat}:${kindOf(card)}`)
     .join("|");
 
   useEffect(() => {
@@ -107,11 +105,13 @@ export function ListingMap({
 
     const bounds = new maplibregl.LngLatBounds();
     let any = false;
-    for (const card of clusters) {
+    const stacked = clusters
+      .map((card) => ({ card, kind: kindOf(card) }))
+      .sort((a, b) => STACK_ORDER[a.kind] - STACK_ORDER[b.kind]);
+    for (const { card, kind } of stacked) {
       if (card.lat == null || card.lng == null) continue;
-      const element = createDotMarker({
-        color: markerColor(card),
-        size: seenIds.has(card.clusterId) ? 12 : 16,
+      const element = createListingMarker({
+        kind,
         onClick: () => onSelectRef.current(card.clusterId),
       });
       const marker = new maplibregl.Marker({ element })

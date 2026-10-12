@@ -45,20 +45,6 @@ export const TONE_TEXT: Record<Tone, string> = {
   fair: "text-muted-foreground",
 };
 
-/** Hex equivalents for non-CSS contexts (MapLibre marker DOM). */
-export const TONE_HEX: Record<Tone, string> = {
-  deal: "#16a34a",
-  overpriced: "#f59e0b",
-  caution: "#dc2626",
-  fair: "#64748b",
-};
-
-/** Triage overrides the price tone on the map: liked pops, seen fades. */
-export const LIKED_HEX = "#f43f5e";
-export const LIKED_DOT = "bg-rose-500";
-export const SEEN_HEX = "#b7c5d4";
-export const SEEN_DOT = "bg-blueGrey-300";
-
 /** Marker/meter color from a within-bucket percentile. */
 export function percentileTone(percentile: number | null): Tone {
   if (percentile == null) return "fair";
@@ -67,8 +53,16 @@ export function percentileTone(percentile: number | null): Tone {
   return "fair";
 }
 
-/** Map marker color: caution overrides the price tone. */
-export function markerTone(card: ClusterCard): Tone {
-  if (card.scamScore != null && card.scamScore >= 30) return "caution";
-  return percentileTone(card.percentile);
+export type MarkerKind = "liked" | "seen" | "deal" | "other";
+
+/** Map markers stay deliberately coarse: your triage first, then only "good
+ *  price" stands out. A caution-flagged house never reads as a deal. */
+export function markerKind(
+  card: ClusterCard,
+  { isLiked, isSeen }: { isLiked: boolean; isSeen: boolean },
+): MarkerKind {
+  if (isLiked) return "liked";
+  if (isSeen) return "seen";
+  if (card.scamScore != null && card.scamScore >= 30) return "other";
+  return percentileTone(card.percentile) === "deal" ? "deal" : "other";
 }

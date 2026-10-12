@@ -26,7 +26,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { fetchJson } from "@/lib/fetch-json";
-import { LIKED_DOT, SEEN_DOT, TONE_DOT, type Tone } from "@/lib/listing-status";
 import { isInBounds, type MapBounds } from "@/lib/map-bounds";
 import { type TriageView, triageStore, useTriage } from "@/lib/triage-store";
 import type { AppConfig, ClusterCard } from "@/lib/types";
@@ -49,11 +48,25 @@ const ListingMap = dynamic(
   },
 );
 
-const LEGEND: Array<{ tone: Tone; label: string }> = [
-  { tone: "deal", label: "Good deal" },
-  { tone: "fair", label: "Fair" },
-  { tone: "overpriced", label: "Overpriced" },
-  { tone: "caution", label: "Caution" },
+const LEGEND = [
+  {
+    label: "Good price",
+    swatch: <span className="size-2.5 rounded-full bg-green-600" />,
+  },
+  {
+    label: "Other",
+    swatch: <span className="size-2.5 rounded-full bg-slate-400" />,
+  },
+  {
+    label: "Liked",
+    swatch: <RiHeart3Fill className="-mx-px size-3 text-rose-500" />,
+  },
+  {
+    label: "Seen",
+    swatch: (
+      <span className="size-2.5 rounded-full border-2 border-slate-600" />
+    ),
+  },
 ];
 
 // Stable empty reference so a not-yet-loaded by-id query doesn't churn the map.
@@ -287,19 +300,9 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       ? tappedCard
       : null;
 
-  // The All map keeps triaged houses that match the filter, so you can tell
-  // where you've already looked. Drawn seen → untriaged → liked, bottom to top.
-  const mapCards = useMemo(
-    () =>
-      effectiveView === "all"
-        ? [
-            ...seenCards,
-            ...visible,
-            ...cards.filter((card) => liked.has(card.clusterId)),
-          ]
-        : visible,
-    [effectiveView, seenCards, visible, cards, liked],
-  );
+  // The All map keeps every house matching the filter, triaged or not — the
+  // marker shape tells them apart.
+  const mapCards = effectiveView === "all" ? cards : visible;
 
   const handleMarkerSelect = (id: number) => {
     selectAndScroll(id);
@@ -473,21 +476,11 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       ) : (
         <div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 rounded-md border bg-background/90 p-2 text-xs shadow-sm backdrop-blur">
           {LEGEND.map((item) => (
-            <span key={item.tone} className="flex items-center gap-1.5">
-              <span
-                className={cn("size-2.5 rounded-full", TONE_DOT[item.tone])}
-              />
+            <span key={item.label} className="flex items-center gap-1.5">
+              {item.swatch}
               {item.label}
             </span>
           ))}
-          <span className="flex items-center gap-1.5">
-            <span className={cn("size-2.5 rounded-full", LIKED_DOT)} />
-            Liked
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className={cn("size-2 rounded-full", SEEN_DOT)} />
-            Seen
-          </span>
         </div>
       )}
     </div>
