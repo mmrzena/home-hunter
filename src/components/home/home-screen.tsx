@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  RiCheckDoubleLine,
   RiCloseLine,
   RiHeart3Fill,
   RiHome4Line,
@@ -13,6 +14,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
@@ -335,6 +337,14 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     selectAndScroll(id);
   };
 
+  const handleMarkAllSeen = () => {
+    const ids = listed.map((card) => card.clusterId);
+    triageStore.hideMany(ids);
+    toast(`Marked ${ids.length} as seen`, {
+      action: { label: "Undo", onClick: () => triageStore.unhideMany(ids) },
+    });
+  };
+
   const handleToggleHide = useCallback(
     (id: number) => {
       if (hidden.has(id)) triageStore.unhide(id);
@@ -439,6 +449,16 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
               onHover={setHoveredId}
             />
           ))
+        )}
+        {effectiveView === "all" && listed.length > 0 && (
+          <Button
+            variant="outline"
+            className="mt-2 shrink-0 gap-1.5"
+            onClick={handleMarkAllSeen}
+          >
+            <RiCheckDoubleLine className="size-4" />
+            Mark all {listed.length} as seen
+          </Button>
         )}
       </div>
     </div>

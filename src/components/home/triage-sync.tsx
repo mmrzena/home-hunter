@@ -27,10 +27,11 @@ const TRIAGE_KEY = ["triage"] as const;
 /** The snapshot after `op` — mirrors what the API does to the user's rows. */
 function applyOp(snapshot: TriageSnapshot, op: TriageOp): TriageSnapshot {
   if (op.type === "clearSeen") return { ...snapshot, seen: [] };
-  const seen = snapshot.seen.filter((id) => id !== op.clusterId);
-  const shortlist = snapshot.shortlist.filter((id) => id !== op.clusterId);
+  const touched = new Set(op.clusterIds);
+  const seen = snapshot.seen.filter((id) => !touched.has(id));
+  const shortlist = snapshot.shortlist.filter((id) => !touched.has(id));
   if (op.type === "set") {
-    (op.state === "shortlist" ? shortlist : seen).push(op.clusterId);
+    (op.state === "shortlist" ? shortlist : seen).push(...op.clusterIds);
   }
   return { seen, shortlist };
 }
@@ -42,20 +43,18 @@ async function fetchSnapshot(): Promise<TriageSnapshot> {
 }
 
 async function sendOp(op: TriageOp): Promise<void> {
-  const url =
-    op.type === "delete"
-      ? `/api/triage?clusterId=${op.clusterId}`
-      : op.type === "clearSeen"
-        ? "/api/triage?state=seen"
-        : "/api/triage";
-  const response = await fetch(url, {
-    method: op.type === "set" ? "POST" : "DELETE",
-    headers: op.type === "set" ? { "content-type": "application/json" } : {},
-    body:
-      op.type === "set"
-        ? JSON.stringify({ clusterId: op.clusterId, state: op.state })
-        : undefined,
-  });
+  const response =
+    op.type === "clearSeen"
+      ? await fetch("/api/triage?state=seen", { method: "DELETE" })
+      : await fetch("/api/triage", {
+          method: op.type === "set" ? "POST" : "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(
+            op.type === "set"
+              ? { clusterIds: op.clusterIds, state: op.state }
+              : { clusterIds: op.clusterIds },
+          ),
+        });
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
 }
 
@@ -118,12 +117,14 @@ export function TriageSync() {
 
       const freshShortlist = local.shortlist.filter((id) => !isKnown(id));
       const freshSeen = local.seen.filter((id) => !isKnown(id));
-      for (const clusterId of freshShortlist) {
-        mutate({ type: "set", clusterId, state: "shortlist" });
-      }
-      for (const clusterId of freshSeen) {
-        mutate({ type: "set", clusterId, state: "seen" });
-      }
+      if (freshShortlist.length > 0)
+        mutate({
+          type: "set",
+          clusterIds: freshShortlist,
+          state: "shortlist",
+        });
+      if (freshSeen.length > 0)
+        mutate({ type: "set", clusterIds: freshSeen, state: "seen" });
 
       triageStore.clearLocal();
       triageStore.connect(

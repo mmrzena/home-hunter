@@ -32,8 +32,8 @@ export type TriageStateName = "seen" | "shortlist";
 export type TriageSnapshot = { seen: number[]; shortlist: number[] };
 
 export type TriageOp =
-  | { type: "set"; clusterId: number; state: TriageStateName }
-  | { type: "delete"; clusterId: number }
+  | { type: "set"; clusterIds: number[]; state: TriageStateName }
+  | { type: "delete"; clusterIds: number[] }
   | { type: "clearSeen" };
 
 type TriageState = {
@@ -137,22 +137,33 @@ export const triageStore = {
     apply({ liked, hidden });
     push?.(
       wasLiked
-        ? { type: "delete", clusterId: id }
-        : { type: "set", clusterId: id, state: "shortlist" },
+        ? { type: "delete", clusterIds: [id] }
+        : { type: "set", clusterIds: [id], state: "shortlist" },
     );
   },
   hide(id: number) {
-    const hidden = new Set(state.hidden).add(id);
-    const liked = new Set(state.liked);
-    liked.delete(id);
-    apply({ liked, hidden });
-    push?.({ type: "set", clusterId: id, state: "seen" });
+    triageStore.hideMany([id]);
   },
   unhide(id: number) {
+    triageStore.unhideMany([id]);
+  },
+  hideMany(ids: number[]) {
+    if (ids.length === 0) return;
     const hidden = new Set(state.hidden);
-    hidden.delete(id);
+    const liked = new Set(state.liked);
+    for (const id of ids) {
+      hidden.add(id);
+      liked.delete(id);
+    }
+    apply({ liked, hidden });
+    push?.({ type: "set", clusterIds: ids, state: "seen" });
+  },
+  unhideMany(ids: number[]) {
+    if (ids.length === 0) return;
+    const hidden = new Set(state.hidden);
+    for (const id of ids) hidden.delete(id);
     apply({ ...state, hidden });
-    push?.({ type: "delete", clusterId: id });
+    push?.({ type: "delete", clusterIds: ids });
   },
   clearHidden() {
     apply({ ...state, hidden: new Set() });
