@@ -178,6 +178,7 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
       {show("maxPrice") && (
         <CommitInput
           placeholder="Max price (Kč)"
+          key={params.get("maxPrice") ?? ""}
           defaultValue={params.get("maxPrice") ?? ""}
           onCommit={(value) => setParam("maxPrice", value)}
           className="w-[130px]"
@@ -186,6 +187,7 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
       {show("minUsable") && (
         <CommitInput
           placeholder="Min usable m²"
+          key={params.get("minUsable") ?? ""}
           defaultValue={params.get("minUsable") ?? ""}
           onCommit={(value) => setParam("minUsable", value)}
           className="w-[120px]"
@@ -194,6 +196,7 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
       {show("minLand") && (
         <CommitInput
           placeholder="Min land m²"
+          key={params.get("minLand") ?? ""}
           defaultValue={params.get("minLand") ?? ""}
           onCommit={(value) => setParam("minLand", value)}
           className="w-[110px]"
@@ -202,6 +205,7 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
       {show("maxHub") && (
         <CommitInput
           placeholder="Max km to Prague / Jičín"
+          key={params.get("maxHub") ?? ""}
           defaultValue={params.get("maxHub") ?? ""}
           onCommit={(value) => setParam("maxHub", value)}
           className="w-[170px]"
@@ -298,6 +302,8 @@ export function FilterBar({ config }: { config: AppConfig | undefined }) {
   );
 }
 
+// Uncontrolled so typing doesn't commit; keyed on the URL value by the caller
+// so a change made elsewhere (Reset, another device) shows up in the box.
 function CommitInput({
   placeholder,
   defaultValue,

@@ -16,7 +16,8 @@ export type { FilterPrefs };
  * - **local** (signed out): the hidden set lives in localStorage, device-local;
  *   the query is not remembered.
  * - **remote** (signed in): `user.filter_prefs` is the source of truth. Every
- *   change pushes the whole prefs object to `/api/filter-prefs`.
+ *   change pushes the whole prefs object to `/api/filter-prefs`, and prefs
+ *   saved from another device are adopted as soon as they are fetched.
  */
 
 const HIDDEN_KEY = "home-hunter:hidden-filters:v1";
@@ -96,27 +97,54 @@ export function rememberFilterQuery(next: string) {
   persist();
 }
 
+function sameHidden(next: readonly string[]): boolean {
+  return next.length === hidden.size && next.every((key) => hidden.has(key));
+}
+
 /**
  * Switch to remote mode: adopt the server prefs and route writes to `pusher`.
- * Returns the saved query so the caller can restore it into the URL. On a
- * reconnect (the feed remounted) the in-memory state is already the truth and
- * is kept. A query the user committed while the profile was still loading
- * wins over the saved one and is pushed right away.
+ * Returns the query the feed's URL should carry. On a reconnect (the feed
+ * remounted) the in-memory state is already the truth and is kept. A query the
+ * user committed while the profile was still loading wins over the saved one
+ * and is pushed right away; so does the URL's query when nothing was saved yet.
  */
 export function connectFilterPrefs(
   server: FilterPrefs | null,
   pusher: (prefs: FilterPrefs) => void,
+  urlQuery: string,
 ): string {
   const wasLocal = mode !== "remote";
   mode = "remote";
   push = pusher;
   if (wasLocal) {
     hidden = new Set(server?.hidden ?? []);
-    if (isQueryDirty) persist();
-    else query = server?.query ?? "";
+    if (isQueryDirty) {
+      persist();
+    } else if (server) {
+      query = server.query;
+    } else {
+      query = urlQuery;
+      if (query) persist();
+    }
   }
   emit();
   return query;
+}
+
+/**
+ * Take over prefs freshly fetched while already connected — the profile was
+ * changed on another device. Returns the new query when it changed (so the
+ * caller can put it into the URL), or null when nothing changed.
+ */
+export function adoptFilterPrefs(server: FilterPrefs | null): string | null {
+  if (mode !== "remote" || !server) return null;
+  const queryChanged = server.query !== query;
+  const hiddenChanged = !sameHidden(server.hidden);
+  if (!queryChanged && !hiddenChanged) return null;
+  query = server.query;
+  hidden = new Set(server.hidden);
+  emit();
+  return queryChanged ? query : null;
 }
 
 /** Back to signed-out: drop the remote writer and re-read the local hidden set. */
