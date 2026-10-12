@@ -53,6 +53,12 @@ export const TONE_HEX: Record<Tone, string> = {
   fair: "#64748b",
 };
 
+/** Triage overrides the price tone on the map: liked pops, seen fades. */
+export const LIKED_HEX = "#f43f5e";
+export const LIKED_DOT = "bg-rose-500";
+export const SEEN_HEX = "#b7c5d4";
+export const SEEN_DOT = "bg-blueGrey-300";
+
 /** Marker/meter color from a within-bucket percentile. */
 export function percentileTone(percentile: number | null): Tone {
   if (percentile == null) return "fair";

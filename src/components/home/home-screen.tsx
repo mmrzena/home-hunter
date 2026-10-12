@@ -26,7 +26,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { fetchJson } from "@/lib/fetch-json";
-import { TONE_DOT, type Tone } from "@/lib/listing-status";
+import { LIKED_DOT, SEEN_DOT, TONE_DOT, type Tone } from "@/lib/listing-status";
 import { isInBounds, type MapBounds } from "@/lib/map-bounds";
 import { type TriageView, triageStore, useTriage } from "@/lib/triage-store";
 import type { AppConfig, ClusterCard } from "@/lib/types";
@@ -287,10 +287,24 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       ? tappedCard
       : null;
 
+  // The All map keeps triaged houses that match the filter, so you can tell
+  // where you've already looked. Drawn seen → untriaged → liked, bottom to top.
+  const mapCards = useMemo(
+    () =>
+      effectiveView === "all"
+        ? [
+            ...seenCards,
+            ...visible,
+            ...cards.filter((card) => liked.has(card.clusterId)),
+          ]
+        : visible,
+    [effectiveView, seenCards, visible, cards, liked],
+  );
+
   const handleMarkerSelect = (id: number) => {
     selectAndScroll(id);
     if (!isDesktop)
-      setTappedCard(visible.find((card) => card.clusterId === id) ?? null);
+      setTappedCard(mapCards.find((card) => card.clusterId === id) ?? null);
   };
 
   const handleClosePreview = () => {
@@ -423,7 +437,9 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   const mapPanel = (
     <div className="relative size-full">
       <ListingMap
-        clusters={visible}
+        clusters={mapCards}
+        likedIds={liked}
+        seenIds={hidden}
         selectedId={selectedId}
         hoveredId={hoveredId}
         onSelect={handleMarkerSelect}
@@ -464,6 +480,14 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
               {item.label}
             </span>
           ))}
+          <span className="flex items-center gap-1.5">
+            <span className={cn("size-2.5 rounded-full", LIKED_DOT)} />
+            Liked
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className={cn("size-2 rounded-full", SEEN_DOT)} />
+            Seen
+          </span>
         </div>
       )}
     </div>

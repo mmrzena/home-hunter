@@ -6,7 +6,12 @@ import { useEffect, useRef } from "react";
 
 import { MapUnavailable } from "@/components/map/map-unavailable";
 import { useMapLibre } from "@/components/map/use-maplibre";
-import { markerTone, TONE_HEX } from "@/lib/listing-status";
+import {
+  LIKED_HEX,
+  markerTone,
+  SEEN_HEX,
+  TONE_HEX,
+} from "@/lib/listing-status";
 import type { MapBounds } from "@/lib/map-bounds";
 import { createDotMarker } from "@/lib/map-markers";
 import { PRAGUE_CENTER } from "@/lib/map-styles";
@@ -14,6 +19,8 @@ import type { AppConfig, ClusterCard } from "@/lib/types";
 
 export function ListingMap({
   clusters,
+  likedIds,
+  seenIds,
   selectedId,
   hoveredId,
   onSelect,
@@ -23,6 +30,10 @@ export function ListingMap({
   anchor,
 }: {
   clusters: ClusterCard[];
+  /** Drawn in rose instead of their price tone. */
+  likedIds: ReadonlySet<number>;
+  /** Drawn as small grey dots instead of their price tone. */
+  seenIds: ReadonlySet<number>;
   selectedId: number | null;
   hoveredId: number | null;
   onSelect: (id: number) => void;
@@ -52,9 +63,15 @@ export function ListingMap({
   // Rebuild markers only when the visible set actually changes — its ids,
   // positions, and tones. Toggling triage recomputes the parent's array but
   // leaves this signature identical, so the map stays put.
+  const markerColor = (card: ClusterCard) => {
+    if (likedIds.has(card.clusterId)) return LIKED_HEX;
+    if (seenIds.has(card.clusterId)) return SEEN_HEX;
+    return TONE_HEX[markerTone(card)];
+  };
   const markerSignature = clusters
     .map(
-      (card) => `${card.clusterId}@${card.lng},${card.lat}:${markerTone(card)}`,
+      (card) =>
+        `${card.clusterId}@${card.lng},${card.lat}:${markerColor(card)}`,
     )
     .join("|");
 
@@ -93,7 +110,8 @@ export function ListingMap({
     for (const card of clusters) {
       if (card.lat == null || card.lng == null) continue;
       const element = createDotMarker({
-        color: TONE_HEX[markerTone(card)],
+        color: markerColor(card),
+        size: seenIds.has(card.clusterId) ? 12 : 16,
         onClick: () => onSelectRef.current(card.clusterId),
       });
       const marker = new maplibregl.Marker({ element })
