@@ -172,7 +172,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     queryKey: ["clusters", "by-id", likedIds.join(",")],
     queryFn: () => fetchJson<{ clusters: ClusterCard[] }>(byIdUrl(likedIds)),
     select: (data) => data.clusters,
-    enabled: view === "liked" && likedIds.length > 0,
+    enabled: likedIds.length > 0,
     placeholderData: keepPreviousData,
   });
 
@@ -300,9 +300,16 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       ? tappedCard
       : null;
 
-  // The All map keeps every house matching the filter, triaged or not — the
-  // marker shape tells them apart.
-  const mapCards = effectiveView === "all" ? cards : visible;
+  // The All map shows every house matching the filter, triaged or not (the
+  // marker shape tells them apart), plus every liked house — Liked ignores the
+  // filter everywhere else, so it does here too.
+  const mapCards = useMemo(
+    () =>
+      effectiveView === "all"
+        ? [...cards.filter((card) => !liked.has(card.clusterId)), ...likedCards]
+        : visible,
+    [effectiveView, cards, liked, likedCards, visible],
+  );
 
   const handleMarkerSelect = (id: number) => {
     selectAndScroll(id);

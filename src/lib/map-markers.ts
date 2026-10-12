@@ -12,23 +12,24 @@ export function createListingMarker({
   kind: MarkerKind;
   onClick: () => void;
 }): HTMLButtonElement {
-  if (kind === "deal") return createDotMarker({ color: "#16a34a", onClick });
+  if (kind === "deal")
+    return createDotMarker({ color: "#16a34a", size: 20, onClick });
   if (kind === "other")
-    return createDotMarker({ color: "#94a3b8", size: 14, onClick });
+    return createDotMarker({ color: "#94a3b8", size: 18, onClick });
 
-  const element = createDotMarker({ color: "transparent", size: 14, onClick });
+  const element = createDotMarker({ color: "transparent", size: 18, onClick });
   if (kind === "seen") {
-    element.style.border = "2.5px solid #475569";
+    element.style.border = "3px solid #475569";
     element.style.boxShadow = "0 0 0 1px rgba(255,255,255,.8)";
     return element;
   }
-  element.style.width = "22px";
-  element.style.height = "22px";
+  element.style.width = "26px";
+  element.style.height = "26px";
   element.style.border = "none";
   element.style.boxShadow = "none";
   element.style.padding = "0";
   element.style.filter = "drop-shadow(0 1px 2px rgba(0,0,0,.4))";
-  element.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22"><path d="${HEART_PATH}" fill="#f43f5e" stroke="white" stroke-width="1.5"/></svg>`;
+  element.innerHTML = `<svg viewBox="0 0 24 24" width="26" height="26"><path d="${HEART_PATH}" fill="#f43f5e" stroke="white" stroke-width="1.5"/></svg>`;
   return element;
 }
 
