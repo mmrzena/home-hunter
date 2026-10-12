@@ -18,6 +18,7 @@ export function ListingMap({
   hoveredId,
   onSelect,
   onBoundsChange,
+  onBackgroundClick,
   fitKey,
   anchor,
 }: {
@@ -27,6 +28,8 @@ export function ListingMap({
   onSelect: (id: number) => void;
   /** Fires after every pan / zoom with the new viewport. */
   onBoundsChange: (bounds: MapBounds) => void;
+  /** A tap on the map itself, not on a marker. */
+  onBackgroundClick?: () => void;
   /** The map re-fits to all markers only when this changes (filters, tab) —
    *  never when a card merely leaves the list, so your zoom stays put. */
   fitKey: string;
@@ -42,6 +45,8 @@ export function ListingMap({
   onSelectRef.current = onSelect;
   const onBoundsChangeRef = useRef(onBoundsChange);
   onBoundsChangeRef.current = onBoundsChange;
+  const onBackgroundClickRef = useRef(onBackgroundClick);
+  onBackgroundClickRef.current = onBackgroundClick;
   const lastFitKey = useRef<string | null>(null);
 
   // Rebuild markers only when the visible set actually changes — its ids,
@@ -65,9 +70,12 @@ export function ListingMap({
         bounds.getNorth(),
       ]);
     };
+    const handleClick = () => onBackgroundClickRef.current?.();
     map.on("moveend", handleMoveEnd);
+    map.on("click", handleClick);
     return () => {
       map.off("moveend", handleMoveEnd);
+      map.off("click", handleClick);
     };
   }, [mapRef]);
 

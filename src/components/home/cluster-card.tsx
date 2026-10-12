@@ -14,7 +14,6 @@ import {
   RiGroupLine,
   RiHeart3Fill,
   RiHeart3Line,
-  RiMapPin2Line,
   RiTrainLine,
 } from "@remixicon/react";
 import Link from "next/link";
@@ -32,11 +31,9 @@ import {
 import { analyseHref } from "@/lib/analyse-href";
 import { houseFromCard } from "@/lib/contacts";
 import {
-  formatArea,
   formatDateAdded,
   formatDateTime,
   formatDistance,
-  formatKind,
   formatPerM2,
   formatPopulation,
   formatPrice,
@@ -48,6 +45,8 @@ import { largePhoto } from "@/lib/photos";
 import type { ClusterCard as Card } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+import { ListingFacts } from "./listing-facts";
+import { ListingThumb } from "./listing-thumb";
 import { PercentileMeter } from "./percentile-meter";
 import { type ExitKind, useSwipeToDismiss } from "./use-swipe-to-dismiss";
 
@@ -189,19 +188,10 @@ export const ClusterCard = memo(function ClusterCard({
             onMouseLeave={() => onHover(null)}
             className="flex min-w-0 flex-1 gap-3 rounded-lg p-3 text-left outline-none"
           >
-            {card.photo ? (
-              // biome-ignore lint/performance/noImgElement: hot-linked CDN thumbnail, not bundled
-              <img
-                src={card.photo}
-                alt=""
-                loading="lazy"
-                className="size-16 shrink-0 rounded-md object-cover @sm:size-20 @md:size-24"
-              />
-            ) : (
-              <div className="flex size-16 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground @sm:size-20 @md:size-24">
-                <RiMapPin2Line className="size-6" />
-              </div>
-            )}
+            <ListingThumb
+              src={card.photo}
+              className="size-16 @sm:size-20 @md:size-24"
+            />
 
             {/* On a wide panel there's room for a second photo — more of the
               house at a glance without expanding. */}
@@ -242,25 +232,7 @@ export const ClusterCard = memo(function ClusterCard({
                 )}
               </div>
 
-              <div className="mt-0.5 truncate text-sm text-muted-foreground">
-                {formatKind(card.propertyKind)} ·{" "}
-                {formatArea(card.usableAreaM2)}
-                {card.landAreaM2 != null &&
-                  ` · pozemek ${formatArea(card.landAreaM2)}`}
-              </div>
-              <div className="flex items-center gap-1 truncate text-sm text-muted-foreground">
-                <RiMapPin2Line className="size-3.5 shrink-0" />
-                {card.cadastralName ?? card.localityText ?? "—"}
-                {card.distanceKm != null && (
-                  <span className="shrink-0">
-                    ·{" "}
-                    <span className="font-mono">
-                      {formatDistance(card.distanceKm)}
-                    </span>
-                    {anchorLabel && ` ${anchorLabel}`}
-                  </span>
-                )}
-              </div>
+              <ListingFacts card={card} anchorLabel={anchorLabel} />
 
               <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                 <span

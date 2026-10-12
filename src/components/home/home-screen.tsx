@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { ClusterCard as Card } from "./cluster-card";
 import { FilterBar } from "./filter-bar";
 import { FilterPrefsSync } from "./filter-prefs-sync";
+import { MapPreviewCard } from "./map-preview-card";
 import { ShortcutsDialog } from "./shortcuts-dialog";
 import { TriageSync } from "./triage-sync";
 import { useIsDesktop } from "./use-is-desktop";
@@ -104,6 +105,9 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   // "Only in view": the feed follows the map viewport. The markers keep
   // showing the whole set so panning can bring houses back.
   const [isOnlyInView, setIsOnlyInView] = useState(false);
+  // Captured on a mobile marker tap rather than looked up by id, so liking or
+  // hiding it (which drops it out of the current tab) doesn't yank the card.
+  const [tappedCard, setTappedCard] = useState<ClusterCard | null>(null);
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
   const isDesktop = useIsDesktop();
 
@@ -175,12 +179,6 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   // Liked: newest-liked-first, re-filtered through the live set so an optimistic
   // un-like drops a card before the refetch. Seen: the filtered feed intersected
   // with the hidden set (newest-hidden-first) — it respects the filter bar now.
-  const likedCards = useMemo(
-    () => byRecency(likedQuery.data ?? NO_CARDS, liked),
-    [likedQuery.data, liked],
-  );
-  const seenCards = useMemo(() => byRecency(cards, hidden), [cards, hidden]);
-
   // A by-id pool for looking up a card when you un-like it (it may be off-filter
   // and so absent from the feed query). Liked cards live in likedQuery, feed
   // cards in `cards`; one of those holds any card whose heart you can click.
@@ -191,6 +189,14 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       map.set(card.clusterId, card);
     return map;
   }, [cards, likedQuery.data]);
+
+  // Built from the whole pool, not just likedQuery, so a house liked from the
+  // feed is in the Liked list immediately rather than after its by-id refetch.
+  const likedCards = useMemo(
+    () => byRecency([...cardsById.values()], liked),
+    [cardsById, liked],
+  );
+  const seenCards = useMemo(() => byRecency(cards, hidden), [cards, hidden]);
 
   // This session's un-likes, newest first, minus any since re-liked or marked
   // seen. Filter-agnostic by construction — the cards are captured, not queried.
@@ -270,6 +276,41 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     onToggleHelp: () => setHelpOpen((open) => !open),
   });
 
+  // A house you triaged from the preview stays up; one that a filter change
+  // dropped from the map doesn't.
+  const previewCard =
+    !isDesktop &&
+    tappedCard &&
+    (liked.has(tappedCard.clusterId) ||
+      hidden.has(tappedCard.clusterId) ||
+      visible.some((card) => card.clusterId === tappedCard.clusterId))
+      ? tappedCard
+      : null;
+
+  const handleMarkerSelect = (id: number) => {
+    selectAndScroll(id);
+    if (!isDesktop)
+      setTappedCard(visible.find((card) => card.clusterId === id) ?? null);
+  };
+
+  const handleClosePreview = () => {
+    setTappedCard(null);
+    setSelectedId(null);
+  };
+
+  // Lands on the tab that actually lists the house — after a like / seen from
+  // the preview it has left the current one.
+  const handleOpenInList = (card: ClusterCard) => {
+    const id = card.clusterId;
+    if (!visible.some((entry) => entry.clusterId === id))
+      setView(liked.has(id) ? "liked" : hidden.has(id) ? "hidden" : "all");
+    if (mapBounds && !isInBounds(card, mapBounds)) setIsOnlyInView(false);
+    setTappedCard(null);
+    setMobileView("list");
+    setExpandedId(id);
+    selectAndScroll(id);
+  };
+
   const handleToggleHide = useCallback(
     (id: number) => {
       if (hidden.has(id)) triageStore.unhide(id);
@@ -337,7 +378,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3 max-lg:pb-20">
-        {activeQuery.isLoading ? (
+        {activeQuery.isLoading && visible.length === 0 ? (
           Array.from({ length: 6 }, (_, index) => (
             <Skeleton key={`skeleton-${index}`} className="h-40 w-full" />
           ))
@@ -385,8 +426,9 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
         clusters={visible}
         selectedId={selectedId}
         hoveredId={hoveredId}
-        onSelect={selectAndScroll}
+        onSelect={handleMarkerSelect}
         onBoundsChange={setMapBounds}
+        onBackgroundClick={isDesktop ? undefined : handleClosePreview}
         fitKey={`${query}|${effectiveView}`}
         anchor={anchor}
       />
@@ -399,16 +441,31 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
         Only in view
         <span className="font-mono text-muted-foreground">{inViewCount}</span>
       </Label>
-      <div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 rounded-md border bg-background/90 p-2 text-xs shadow-sm backdrop-blur">
-        {LEGEND.map((item) => (
-          <span key={item.tone} className="flex items-center gap-1.5">
-            <span
-              className={cn("size-2.5 rounded-full", TONE_DOT[item.tone])}
-            />
-            {item.label}
-          </span>
-        ))}
-      </div>
+      {previewCard ? (
+        <MapPreviewCard
+          key={previewCard.clusterId}
+          card={previewCard}
+          anchorLabel={anchor?.label ?? null}
+          isLiked={liked.has(previewCard.clusterId)}
+          isHidden={hidden.has(previewCard.clusterId)}
+          onOpen={handleOpenInList}
+          onToggleLike={handleToggleLike}
+          onToggleHide={handleToggleHide}
+          onClose={handleClosePreview}
+          className="absolute inset-x-3 bottom-16 z-10"
+        />
+      ) : (
+        <div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 rounded-md border bg-background/90 p-2 text-xs shadow-sm backdrop-blur">
+          {LEGEND.map((item) => (
+            <span key={item.tone} className="flex items-center gap-1.5">
+              <span
+                className={cn("size-2.5 rounded-full", TONE_DOT[item.tone])}
+              />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 
