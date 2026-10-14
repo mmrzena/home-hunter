@@ -20,8 +20,8 @@ import { useFollowUp } from "./use-contacts";
 const CHASE_UP_AFTER_DAYS = CHASE_UP_AFTER_MS / 86_400_000;
 
 /**
- * Asks what the chase-up was before logging it, so the history says more than
- * "Followed up". Mounted only while open; closing calls `onClose`.
+ * Logs a follow-up (a call, an email, a nudge) on the house's history, with a
+ * note on what it was. Mounted only while open; closing calls `onClose`.
  */
 export function FollowUpDialog({
   contact,
@@ -53,7 +53,7 @@ export function FollowUpDialog({
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit} className="grid gap-4">
           <DialogHeader className="text-left">
-            <DialogTitle>Chased them up</DialogTitle>
+            <DialogTitle>Log a follow-up</DialogTitle>
             <DialogDescription className="truncate">
               {contact.title ?? contact.url}
             </DialogDescription>
@@ -64,7 +64,7 @@ export function FollowUpDialog({
               id="follow-up-note"
               rows={3}
               maxLength={2_000}
-              placeholder="Called the agent, left a voicemail. Emailed again about the roof."
+              placeholder="Called the agent, left a voicemail. Asked for the energy certificate."
               value={note}
               onChange={(event) => setNote(event.target.value)}
             />

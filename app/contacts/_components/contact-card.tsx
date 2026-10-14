@@ -15,6 +15,7 @@ import {
   RiNavigationLine,
   RiPencilLine,
   RiPhoneLine,
+  RiSendPlaneLine,
   RiStarLine,
   RiUser3Line,
 } from "@remixicon/react";
@@ -25,7 +26,7 @@ import {
   ContactDialog,
   type ContactDialogFocus,
 } from "@/components/contacts/contact-dialog";
-import { FollowUpButton } from "@/components/contacts/follow-up-button";
+import { FollowUpDialog } from "@/components/contacts/follow-up-dialog";
 import { RatingStars } from "@/components/contacts/rating-stars";
 import {
   useDeleteContact,
@@ -195,6 +196,7 @@ export function ContactCard({
   isFocused?: boolean;
 }) {
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [isLoggingFollowUp, setIsLoggingFollowUp] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const save = useSaveContact();
   const remove = useDeleteContact();
@@ -320,6 +322,9 @@ export function ContactCard({
               <DropdownMenuItem onSelect={() => setEditing({ focus: "all" })}>
                 <RiPencilLine /> Edit details
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setIsLoggingFollowUp(true)}>
+                <RiSendPlaneLine /> Log a follow-up
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant="destructive"
@@ -354,7 +359,13 @@ export function ContactCard({
               No activity for {daysSinceActivity(contact, now)} days. Chased
               them up?
             </span>
-            <FollowUpButton contact={contact} size="xs" />
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() => setIsLoggingFollowUp(true)}
+            >
+              Followed up
+            </Button>
           </div>
         )}
 
@@ -442,20 +453,31 @@ export function ContactCard({
 
         {latestEvent && (
           <Collapsible>
-            <CollapsibleTrigger className="flex w-full items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
-              <RiHistoryLine className="size-3.5 shrink-0" />
-              <span className="min-w-0 flex-1 truncate text-left">
-                <span className="font-mono">
-                  {formatDayMonth(latestEvent.createdAt)}
-                </span>{" "}
-                {eventLine(latestEvent)}
-              </span>
-              {earlierEvents.length > 0 && (
-                <span className="shrink-0">
-                  +{earlierEvents.length} earlier
+            <div className="flex items-center gap-2">
+              <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
+                <RiHistoryLine className="size-3.5 shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-left">
+                  <span className="font-mono">
+                    {formatDayMonth(latestEvent.createdAt)}
+                  </span>{" "}
+                  {eventLine(latestEvent)}
                 </span>
-              )}
-            </CollapsibleTrigger>
+                {earlierEvents.length > 0 && (
+                  <span className="shrink-0">
+                    +{earlierEvents.length} earlier
+                  </span>
+                )}
+              </CollapsibleTrigger>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="shrink-0 text-muted-foreground"
+                title="Add a follow-up to the history"
+                onClick={() => setIsLoggingFollowUp(true)}
+              >
+                <RiSendPlaneLine /> Log
+              </Button>
+            </div>
             {earlierEvents.length > 0 && (
               <CollapsibleContent>
                 <ol className="mt-2 space-y-1 border-l pl-3 text-xs text-muted-foreground">
@@ -497,6 +519,12 @@ export function ContactCard({
         </div>
       </div>
 
+      {isLoggingFollowUp && (
+        <FollowUpDialog
+          contact={contact}
+          onClose={() => setIsLoggingFollowUp(false)}
+        />
+      )}
       {editing && (
         <ContactDialog
           house={houseOf(contact)}
