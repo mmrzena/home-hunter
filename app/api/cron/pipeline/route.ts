@@ -1,14 +1,15 @@
+import type { NextRequest } from "next/server";
 import { getRun, start } from "workflow/api";
 import { sql } from "@/db";
-import { isCronAuthorized } from "@/lib/cron-auth";
+import { isPipelineAuthorized } from "@/lib/pipeline-auth";
 import { pipelineWorkflow } from "@/workflows/pipeline";
 import { getOrCreateRun } from "../../../../worker/durable/run-record";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-export async function GET(request: Request) {
-  if (!isCronAuthorized(request, process.env.CRON_SECRET))
+export async function GET(request: NextRequest) {
+  if (!(await isPipelineAuthorized(request)))
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const result = await sql.begin(async (tx) => {

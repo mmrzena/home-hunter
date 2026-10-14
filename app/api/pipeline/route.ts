@@ -1,10 +1,11 @@
+import type { NextRequest } from "next/server";
 import { sql } from "@/db";
-import { isCronAuthorized } from "@/lib/cron-auth";
+import { isPipelineAuthorized } from "@/lib/pipeline-auth";
 
 export const runtime = "nodejs";
 
-export async function GET(request: Request) {
-  if (!isCronAuthorized(request, process.env.CRON_SECRET))
+export async function GET(request: NextRequest) {
+  if (!(await isPipelineAuthorized(request)))
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   const runs =
     await sql`SELECT id, day, started_at, updated_at, finished_at, workflow_id, error,
