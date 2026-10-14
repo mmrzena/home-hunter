@@ -1,11 +1,10 @@
 import { RiNavigationLine } from "@remixicon/react";
-import Link from "next/link";
 
 import { CallButton } from "@/components/contacts/call-button";
 import { Button } from "@/components/ui/button";
-import { analyseHref } from "@/lib/analyse-href";
 import { type Contact, navigateHref } from "@/lib/contacts";
 import { formatDayMonth } from "@/lib/format";
+import { AgendaRow } from "./agenda-row";
 import { AgendaSection } from "./agenda-section";
 
 const WEEKDAY = new Intl.DateTimeFormat("en-GB", {
@@ -41,27 +40,21 @@ export function UpcomingVisits({
         const date = new Date(visit.visitAt);
         const navigate = navigateHref(visit);
         return (
-          <li key={visit.id} className="flex items-center gap-4 px-4 py-3">
-            <div className="flex w-14 shrink-0 flex-col items-center rounded-lg bg-primary/10 py-1.5 text-primary">
-              <span className="text-[11px] font-medium uppercase">
-                {WEEKDAY.format(date)}
-              </span>
-              <span className="text-sm font-semibold">
-                {formatDayMonth(visit.visitAt)}
-              </span>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-muted-foreground">
-                {relativeDay(date, new Date(now))} · {TIME.format(date)}
-                {visit.contactName && ` · ${visit.contactName}`}
-              </p>
-              <Link
-                href={analyseHref(visit.url)}
-                className="block truncate text-sm font-medium hover:underline"
-              >
-                {visit.title ?? visit.url}
-              </Link>
-            </div>
+          <AgendaRow
+            key={visit.id}
+            contact={visit}
+            meta={`${relativeDay(date, new Date(now))} · ${TIME.format(date)}`}
+            leading={
+              <div className="flex w-14 shrink-0 flex-col items-center rounded-lg bg-primary/10 py-1.5 text-primary">
+                <span className="text-[11px] font-medium uppercase">
+                  {WEEKDAY.format(date)}
+                </span>
+                <span className="text-sm font-semibold">
+                  {formatDayMonth(visit.visitAt)}
+                </span>
+              </div>
+            }
+          >
             {navigate && (
               <Button
                 asChild
@@ -76,7 +69,7 @@ export function UpcomingVisits({
               </Button>
             )}
             {visit.contactPhone && <CallButton phone={visit.contactPhone} />}
-          </li>
+          </AgendaRow>
         );
       })}
     </AgendaSection>

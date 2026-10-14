@@ -22,6 +22,7 @@ import {
   isContactStatus,
   isUpcomingVisit,
   needsChaseUp,
+  needsVerdict,
   STATUS_ORDER,
 } from "@/lib/contacts";
 import { ChaseUpList } from "./chase-up-list";
@@ -31,6 +32,7 @@ import { ContactsMap } from "./contacts-map";
 import { NoContactsEmpty } from "./no-contacts-empty";
 import { SignInEmpty } from "./sign-in-empty";
 import { UpcomingVisits } from "./upcoming-visits";
+import { VerdictList } from "./verdict-list";
 
 type View = "all" | ContactStatus;
 
@@ -84,6 +86,7 @@ export function ContactsScreen({ isAuthEnabled }: { isAuthEnabled: boolean }) {
     .sort(
       (left, right) => Date.parse(left.visitAt) - Date.parse(right.visitAt),
     );
+  const awaitingVerdict = all.filter((contact) => needsVerdict(contact, now));
   const chaseUp = all.filter((contact) => needsChaseUp(contact, now));
   // A status tab that just emptied (its last house moved on) falls back to All.
   const effectiveView = view !== "all" && !counts.get(view) ? "all" : view;
@@ -113,6 +116,9 @@ export function ContactsScreen({ isAuthEnabled }: { isAuthEnabled: boolean }) {
     return (
       <div className="space-y-6">
         {upcoming.length > 0 && <UpcomingVisits visits={upcoming} now={now} />}
+        {awaitingVerdict.length > 0 && (
+          <VerdictList contacts={awaitingVerdict} />
+        )}
         {chaseUp.length > 0 && <ChaseUpList contacts={chaseUp} now={now} />}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <ToggleGroup

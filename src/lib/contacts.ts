@@ -176,6 +176,43 @@ export function isUpcomingVisit(contact: Contact, now: number): boolean {
   return contact.visitAt !== "" && Date.parse(contact.visitAt) >= now;
 }
 
+/** A planned visit whose date has passed without the status moving on. */
+export function isVisitOverdue(contact: Contact, now: number): boolean {
+  return (
+    contact.status === "visit_planned" &&
+    contact.visitAt !== "" &&
+    Date.parse(contact.visitAt) < now
+  );
+}
+
+/** Been there (or the visit date has passed) but no verdict recorded yet. */
+export function needsVerdict(contact: Contact, now: number): boolean {
+  return (
+    isVisitOverdue(contact, now) ||
+    (isAfterVisit(contact.status) && contact.rating == null)
+  );
+}
+
+/** The status a verdict lands on: "visited" unless the house is already past that. */
+export function verdictStatus(contact: Contact): ContactStatus {
+  return isAfterVisit(contact.status) ? contact.status : "visited";
+}
+
+/** A fresh entry: just contacted, with the advert's seller as the contact. */
+export function emptyDetails(contactName?: string | null): ContactDetails {
+  return {
+    status: "contacted",
+    contactName: contactName ?? "",
+    contactPhone: "",
+    contactEmail: "",
+    visitAt: "",
+    notes: "",
+    rating: null,
+    pros: "",
+    cons: "",
+  };
+}
+
 export function isContactStatus(value: string): value is ContactStatus {
   return CONTACT_STATUSES.some((status) => status === value);
 }

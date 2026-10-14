@@ -2,32 +2,19 @@
 
 import { RiContactsBook2Fill, RiContactsBook2Line } from "@remixicon/react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { signIn } from "@/lib/auth-client";
-import {
-  type ContactDetails,
-  type ContactHouse,
-  contactKey,
-} from "@/lib/contacts";
+import { type ContactHouse, contactKey, emptyDetails } from "@/lib/contacts";
 import { cn } from "@/lib/utils";
 import { ContactDialog } from "./contact-dialog";
 import { useContactsState } from "./contacts-provider";
-
-const EMPTY_DETAILS: ContactDetails = {
-  status: "contacted",
-  contactName: "",
-  contactPhone: "",
-  contactEmail: "",
-  visitAt: "",
-  notes: "",
-  rating: null,
-  pros: "",
-  cons: "",
-};
+import { useDeleteContact, useSaveContact } from "./use-contacts";
 
 /**
- * Marks a house as contacted and opens its notes. Reads the shared contacts
+ * Marks a house as contacted in one tap (the toast offers notes and undo);
+ * once it's contacted, a tap opens its notes. Reads the shared contacts
  * state, so cards and the analysis report need no extra wiring. Signed out, it
  * starts Google sign-in (notes hold personal data and live only on the server);
  * with sign-in not configured it renders nothing.
@@ -44,6 +31,8 @@ export function ContactButton({
 }) {
   const { isAvailable, isSessionPending, canUse, byKey } = useContactsState();
   const [isOpen, setIsOpen] = useState(false);
+  const save = useSaveContact();
+  const remove = useDeleteContact();
   const existing = byKey.get(contactKey(house));
   const isContacted = existing !== undefined;
   const label = isContacted ? "Contacted · edit notes" : "Add to contacted";
@@ -56,7 +45,21 @@ export function ContactButton({
       signIn.social({ provider: "google", callbackURL: window.location.href });
       return;
     }
-    setIsOpen(true);
+    if (isContacted) {
+      setIsOpen(true);
+      return;
+    }
+    save.mutate(
+      { ...emptyDetails(suggestedName), house },
+      {
+        onSuccess: ({ contact }) =>
+          toast.success("Added to contacted", {
+            description: house.title ?? house.url,
+            action: { label: "Add notes", onClick: () => setIsOpen(true) },
+            cancel: { label: "Undo", onClick: () => remove.mutate(contact.id) },
+          }),
+      },
+    );
   }
 
   if (!isAvailable) return null;
@@ -68,6 +71,7 @@ export function ContactButton({
           variant={isContacted ? "secondary" : "default"}
           className="gap-1.5 rounded-full"
           title={canUse ? undefined : "Sign in to keep contact notes"}
+          disabled={save.isPending}
           onClick={handleClick}
         >
           <Icon className="size-4" />
@@ -78,6 +82,7 @@ export function ContactButton({
           type="button"
           aria-label={label}
           title={canUse ? label : "Sign in to keep contact notes"}
+          disabled={save.isPending}
           onClick={handleClick}
           className={cn(
             "flex size-7 items-center justify-center rounded-md transition-colors",
@@ -92,9 +97,7 @@ export function ContactButton({
       {isOpen && (
         <ContactDialog
           house={house}
-          initial={
-            existing ?? { ...EMPTY_DETAILS, contactName: suggestedName ?? "" }
-          }
+          initial={existing ?? emptyDetails(suggestedName)}
           onClose={() => setIsOpen(false)}
         />
       )}

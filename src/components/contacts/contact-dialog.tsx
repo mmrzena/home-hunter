@@ -28,6 +28,7 @@ import {
   type ContactHouse,
   isAfterVisit,
 } from "@/lib/contacts";
+import { cn } from "@/lib/utils";
 import { RatingPicker } from "./rating-picker";
 import { useSaveContact } from "./use-contacts";
 
@@ -39,6 +40,19 @@ const FORM = CONTACT_DETAILS.extend({
   ]),
 });
 type FormValues = z.infer<typeof FORM>;
+
+/**
+ * Which part of the notes the dialog is about. A focused dialog shows only
+ * those fields (the rest round-trip unchanged) so planning a visit or recording
+ * a verdict is one short step, not the whole form.
+ */
+export type ContactDialogFocus = "all" | "visit" | "verdict";
+
+const TITLE: Record<ContactDialogFocus, string> = {
+  visit: "Plan the visit",
+  verdict: "How was the visit?",
+  all: "Contact notes",
+};
 
 /** ISO instant → "YYYY-MM-DDTHH:mm" in local time, for datetime-local. */
 function toLocalInput(iso: string): string {
@@ -52,10 +66,12 @@ function toLocalInput(iso: string): string {
 export function ContactDialog({
   house,
   initial,
+  focus = "all",
   onClose,
 }: {
   house: ContactHouse;
   initial: ContactDetails;
+  focus?: ContactDialogFocus;
   onClose: () => void;
 }) {
   const save = useSaveContact();
@@ -67,6 +83,9 @@ export function ContactDialog({
   const { errors } = form.formState;
   const ratingField = useController({ name: "rating", control: form.control });
   const status = useWatch({ name: "status", control: form.control });
+  const showsAll = focus === "all";
+  const showsVisit = showsAll || focus === "visit";
+  const showsVerdict = showsAll || focus === "verdict";
 
   function handleSubmit(values: FormValues) {
     save.mutate(
@@ -86,7 +105,7 @@ export function ContactDialog({
         className="inset-0 flex max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none p-0 sm:inset-auto sm:top-1/2 sm:left-1/2 sm:max-h-[calc(100dvh-2rem)] sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg"
       >
         <DialogHeader className="shrink-0 border-b px-4 py-3 pr-12 text-left sm:px-6 sm:py-4">
-          <DialogTitle>Contact notes</DialogTitle>
+          <DialogTitle>{TITLE[focus]}</DialogTitle>
           <DialogDescription className="truncate">
             {house.title ?? house.url}
           </DialogDescription>
@@ -96,103 +115,117 @@ export function ContactDialog({
           onSubmit={form.handleSubmit(handleSubmit)}
           className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-x-hidden overflow-y-auto overscroll-contain p-4 sm:grid-cols-2 sm:p-6"
         >
-          <Field className="sm:col-span-2">
-            <FieldLabel htmlFor="contact-status">Status</FieldLabel>
-            <NativeSelect id="contact-status" {...form.register("status")}>
-              {CONTACT_STATUSES.map((status) => (
-                <NativeSelectOption key={status} value={status}>
-                  {CONTACT_STATUS_LABEL[status]}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="contact-name">Contact person</FieldLabel>
-            <Input
-              id="contact-name"
-              autoComplete="off"
-              placeholder="Jana Nováková"
-              {...form.register("contactName")}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="contact-phone">Phone</FieldLabel>
-            <Input
-              id="contact-phone"
-              type="tel"
-              autoComplete="off"
-              placeholder="+420 777 123 456"
-              aria-invalid={Boolean(errors.contactPhone)}
-              {...form.register("contactPhone")}
-            />
-            <FieldError errors={[errors.contactPhone]} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="contact-email">Email</FieldLabel>
-            <Input
-              id="contact-email"
-              type="email"
-              autoComplete="off"
-              aria-invalid={Boolean(errors.contactEmail)}
-              {...form.register("contactEmail")}
-            />
-            <FieldError errors={[errors.contactEmail]} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="contact-visit">Visit</FieldLabel>
-            <Input
-              id="contact-visit"
-              type="datetime-local"
-              className="appearance-none"
-              aria-invalid={Boolean(errors.visitAt)}
-              {...form.register("visitAt")}
-            />
-            <FieldError errors={[errors.visitAt]} />
-          </Field>
-          <fieldset className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border p-3 sm:col-span-2">
-            <legend className="px-1 text-sm font-medium">
-              After the visit
-              {!isAfterVisit(status) && (
-                <span className="ml-1 font-normal text-muted-foreground">
-                  (optional until you've been there)
-                </span>
-              )}
-            </legend>
-            <RatingPicker
-              value={ratingField.field.value}
-              onChange={ratingField.field.onChange}
-            />
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {showsAll && (
+            <>
+              <Field className="sm:col-span-2">
+                <FieldLabel htmlFor="contact-status">Status</FieldLabel>
+                <NativeSelect id="contact-status" {...form.register("status")}>
+                  {CONTACT_STATUSES.map((status) => (
+                    <NativeSelectOption key={status} value={status}>
+                      {CONTACT_STATUS_LABEL[status]}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </Field>
               <Field>
-                <FieldLabel htmlFor="contact-pros">What I liked</FieldLabel>
-                <Textarea
-                  id="contact-pros"
-                  rows={3}
-                  placeholder="Quiet street, south-facing garden, new roof"
-                  {...form.register("pros")}
+                <FieldLabel htmlFor="contact-name">Contact person</FieldLabel>
+                <Input
+                  id="contact-name"
+                  autoComplete="off"
+                  placeholder="Jana Nováková"
+                  {...form.register("contactName")}
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="contact-cons">What bothered me</FieldLabel>
-                <Textarea
-                  id="contact-cons"
-                  rows={3}
-                  placeholder="Damp cellar, 15 min walk to the station"
-                  {...form.register("cons")}
+                <FieldLabel htmlFor="contact-phone">Phone</FieldLabel>
+                <Input
+                  id="contact-phone"
+                  type="tel"
+                  autoComplete="off"
+                  placeholder="+420 777 123 456"
+                  aria-invalid={Boolean(errors.contactPhone)}
+                  {...form.register("contactPhone")}
                 />
+                <FieldError errors={[errors.contactPhone]} />
               </Field>
-            </div>
-          </fieldset>
-          <Field className="sm:col-span-2">
-            <FieldLabel htmlFor="contact-notes">Notes</FieldLabel>
-            <Textarea
-              id="contact-notes"
-              rows={5}
-              placeholder="1 Oct: messaged the agent via Sreality. Asked about the roof and heating costs."
-              {...form.register("notes")}
-            />
-            <FieldError errors={[errors.notes]} />
-          </Field>
+              <Field>
+                <FieldLabel htmlFor="contact-email">Email</FieldLabel>
+                <Input
+                  id="contact-email"
+                  type="email"
+                  autoComplete="off"
+                  aria-invalid={Boolean(errors.contactEmail)}
+                  {...form.register("contactEmail")}
+                />
+                <FieldError errors={[errors.contactEmail]} />
+              </Field>
+            </>
+          )}
+          {showsVisit && (
+            <Field className={cn(!showsAll && "sm:col-span-2")}>
+              <FieldLabel htmlFor="contact-visit">
+                {showsAll ? "Visit" : "When"}
+              </FieldLabel>
+              <Input
+                id="contact-visit"
+                type="datetime-local"
+                className="appearance-none"
+                aria-invalid={Boolean(errors.visitAt)}
+                {...form.register("visitAt")}
+              />
+              <FieldError errors={[errors.visitAt]} />
+            </Field>
+          )}
+          {showsVerdict && (
+            <fieldset className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border p-3 sm:col-span-2">
+              <legend className="px-1 text-sm font-medium">
+                {showsAll ? "After the visit" : "Your verdict"}
+                {showsAll && !isAfterVisit(status) && (
+                  <span className="ml-1 font-normal text-muted-foreground">
+                    (optional until you've been there)
+                  </span>
+                )}
+              </legend>
+              <RatingPicker
+                value={ratingField.field.value}
+                onChange={ratingField.field.onChange}
+              />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel htmlFor="contact-pros">What I liked</FieldLabel>
+                  <Textarea
+                    id="contact-pros"
+                    rows={3}
+                    placeholder="Quiet street, south-facing garden, new roof"
+                    {...form.register("pros")}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="contact-cons">
+                    What bothered me
+                  </FieldLabel>
+                  <Textarea
+                    id="contact-cons"
+                    rows={3}
+                    placeholder="Damp cellar, 15 min walk to the station"
+                    {...form.register("cons")}
+                  />
+                </Field>
+              </div>
+            </fieldset>
+          )}
+          {showsAll && (
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="contact-notes">Notes</FieldLabel>
+              <Textarea
+                id="contact-notes"
+                rows={5}
+                placeholder="1 Oct: messaged the agent via Sreality. Asked about the roof and heating costs."
+                {...form.register("notes")}
+              />
+              <FieldError errors={[errors.notes]} />
+            </Field>
+          )}
         </form>
         <DialogFooter className="shrink-0 border-t p-4 sm:px-6">
           <Button type="button" variant="outline" onClick={onClose}>

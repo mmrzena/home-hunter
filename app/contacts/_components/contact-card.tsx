@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type RemixiconComponentType,
   RiAlarmWarningLine,
   RiBarChartBoxLine,
   RiCalendarEventLine,
@@ -14,12 +15,17 @@ import {
   RiNavigationLine,
   RiPencilLine,
   RiPhoneLine,
+  RiStarLine,
   RiUser3Line,
 } from "@remixicon/react";
 import Link from "next/link";
 import { useState } from "react";
 
-import { ContactDialog } from "@/components/contacts/contact-dialog";
+import {
+  ContactDialog,
+  type ContactDialogFocus,
+} from "@/components/contacts/contact-dialog";
+import { FollowUpButton } from "@/components/contacts/follow-up-button";
 import { RatingStars } from "@/components/contacts/rating-stars";
 import {
   useDeleteContact,
@@ -57,6 +63,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { ContactStatus } from "@/db/schema";
 import { analyseHref } from "@/lib/analyse-href";
 import { STATUS_DOT } from "@/lib/contact-status-style";
 import {
@@ -69,14 +76,16 @@ import {
   detailsOf,
   EVENT_LABEL,
   houseOf,
-  isAfterVisit,
   isContactStatus,
   isRating,
   isUpcomingVisit,
+  isVisitOverdue,
   navigateHref,
   needsChaseUp,
+  needsVerdict,
   RATING_LABEL,
   telHref,
+  verdictStatus,
 } from "@/lib/contacts";
 import {
   formatArea,
@@ -132,6 +141,41 @@ function eventDetail(event: ContactEvent): string | null {
   }
 }
 
+/**
+ * What this dialog opens on: a slice of the notes, with the status the save
+ * will move the house to (undefined keeps the current one).
+ */
+type Editing = { focus: ContactDialogFocus; status?: ContactStatus };
+
+type Stage = Editing & { label: string; Icon: RemixiconComponentType };
+
+const VERDICT_STAGE = { Icon: RiStarLine, focus: "verdict" } as const;
+const VISIT_STAGE = { Icon: RiCalendarEventLine, focus: "visit" } as const;
+
+/** The one thing to do next with this house, by where it is in the pipeline. */
+function stageOf(contact: Contact, isOverdue: boolean): Stage | null {
+  switch (contact.status) {
+    case "contacted":
+      return { ...VISIT_STAGE, label: "Plan visit", status: "visit_planned" };
+    case "visit_planned":
+      return isOverdue
+        ? {
+            ...VERDICT_STAGE,
+            label: "How did it go?",
+            status: verdictStatus(contact),
+          }
+        : { ...VISIT_STAGE, label: "Reschedule" };
+    case "visited":
+    case "offer":
+      return {
+        ...VERDICT_STAGE,
+        label: contact.rating == null ? "Add verdict" : "Edit verdict",
+      };
+    case "rejected":
+      return null;
+  }
+}
+
 export function ContactCard({
   contact,
   now,
@@ -142,7 +186,7 @@ export function ContactCard({
   /** Scrolls the card into view when it mounts (a map marker was clicked). */
   isFocused?: boolean;
 }) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [editing, setEditing] = useState<Editing | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const save = useSaveContact();
   const remove = useDeleteContact();
@@ -152,7 +196,8 @@ export function ContactCard({
   const isRejected = contact.status === "rejected";
   const navigate = navigateHref(contact);
   const isChaseUp = needsChaseUp(contact, now);
-  const wantsVerdict = contact.rating == null && isAfterVisit(contact.status);
+  const isOverdue = isVisitOverdue(contact, now);
+  const stage = stageOf(contact, isOverdue);
   const facts = [
     current?.usableAreaM2 != null &&
       `${formatArea(current.usableAreaM2)} usable`,
@@ -161,9 +206,21 @@ export function ContactCard({
       `${formatDistance(current.hub.km)} to ${current.hub.label}`,
   ].filter((fact): fact is string => typeof fact === "string");
 
+  /**
+   * Moving to "Visit planned" asks for the date and "Visited" for the verdict
+   * (the save happens when that dialog is submitted); other statuses save at once.
+   */
   function handleStatusChange(status: string) {
-    if (isContactStatus(status))
-      save.mutate({ ...detailsOf(contact), status, house: houseOf(contact) });
+    if (!isContactStatus(status) || status === contact.status) return;
+    if (status === "visit_planned") {
+      setEditing({ focus: "visit", status });
+      return;
+    }
+    if (status === "visited" && contact.rating == null) {
+      setEditing({ focus: "verdict", status });
+      return;
+    }
+    save.mutate({ ...detailsOf(contact), status, house: houseOf(contact) });
   }
 
   return (
@@ -250,8 +307,8 @@ export function ContactCard({
                   </a>
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem onSelect={() => setIsEditing(true)}>
-                <RiPencilLine /> Edit notes
+              <DropdownMenuItem onSelect={() => setEditing({ focus: "all" })}>
+                <RiPencilLine /> Edit details
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -281,11 +338,13 @@ export function ContactCard({
         </Select>
 
         {isChaseUp && (
-          <p className="flex items-center gap-2 rounded-md bg-warning/15 px-2 py-1.5 text-xs text-warning-foreground">
+          <div className="flex items-center gap-2 rounded-md bg-warning/15 py-1.5 pr-1.5 pl-2 text-xs text-warning-foreground">
             <RiAlarmWarningLine className="size-4 shrink-0" />
-            No activity for {daysSinceActivity(contact, now)} days. Chase them
-            up?
-          </p>
+            <span className="flex-1">
+              No activity for {daysSinceActivity(contact, now)} days.
+            </span>
+            <FollowUpButton contactId={contact.id} size="xs" />
+          </div>
         )}
 
         <dl className="space-y-1.5 text-sm">
@@ -300,7 +359,10 @@ export function ContactCard({
             >
               <dt className="sr-only">Visit</dt>
               <RiCalendarEventLine className="size-4 shrink-0" />
-              <dd>{formatVisit(contact.visitAt)}</dd>
+              <dd>
+                {formatVisit(contact.visitAt)}
+                {isOverdue && " · no verdict yet"}
+              </dd>
             </div>
           )}
           {contact.contactName && (
@@ -357,17 +419,14 @@ export function ContactCard({
 
         <button
           type="button"
-          onClick={() => setIsEditing(true)}
+          onClick={() => setEditing({ focus: "all" })}
           title="Edit notes"
           className={cn(
             "text-left text-sm text-muted-foreground hover:text-foreground",
             contact.notes ? "line-clamp-3 whitespace-pre-line" : "w-fit",
           )}
         >
-          {contact.notes ||
-            (wantsVerdict
-              ? "+ How was the visit? Add your verdict"
-              : "+ Add contact details or notes")}
+          {contact.notes || "+ Add contact details or notes"}
         </button>
 
         {contact.events.length > 0 && (
@@ -398,32 +457,38 @@ export function ContactCard({
         )}
 
         <div className="mt-auto flex gap-2 pt-1">
+          {stage && (
+            <Button
+              variant={needsVerdict(contact, now) ? "default" : "outline"}
+              size="sm"
+              className="flex-1 gap-1.5"
+              onClick={() => setEditing(stage)}
+            >
+              <stage.Icon className="size-4" /> {stage.label}
+            </Button>
+          )}
           <Button
             asChild
             variant="outline"
             size="sm"
-            className="flex-1 gap-1.5"
+            className={cn("gap-1.5", !stage && "flex-1")}
           >
             <Link href={analyseHref(contact.url)}>
               <RiBarChartBoxLine className="size-4" /> Analysis
             </Link>
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 gap-1.5"
-            onClick={() => setIsEditing(true)}
-          >
-            <RiPencilLine className="size-4" /> Notes
-          </Button>
         </div>
       </div>
 
-      {isEditing && (
+      {editing && (
         <ContactDialog
           house={houseOf(contact)}
-          initial={detailsOf(contact)}
-          onClose={() => setIsEditing(false)}
+          initial={{
+            ...detailsOf(contact),
+            status: editing.status ?? contact.status,
+          }}
+          focus={editing.focus}
+          onClose={() => setEditing(null)}
         />
       )}
       <AlertDialog open={isConfirming} onOpenChange={setIsConfirming}>
