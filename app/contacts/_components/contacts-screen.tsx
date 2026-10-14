@@ -125,6 +125,7 @@ export function ContactsScreen({ isAuthEnabled }: { isAuthEnabled: boolean }) {
             type="single"
             variant="outline"
             size="sm"
+            spacing={1}
             value={effectiveView}
             onValueChange={(next) => {
               if (next === "all" || isContactStatus(next)) setView(next);

@@ -176,6 +176,14 @@ function stageOf(contact: Contact, isOverdue: boolean): Stage | null {
   }
 }
 
+/** "Followed up" or "Status: Visit planned" — one history line. */
+function eventLine(event: ContactEvent): string {
+  const detail = eventDetail(event);
+  return detail
+    ? `${EVENT_LABEL[event.kind]}: ${detail}`
+    : EVENT_LABEL[event.kind];
+}
+
 export function ContactCard({
   contact,
   now,
@@ -198,6 +206,8 @@ export function ContactCard({
   const isChaseUp = needsChaseUp(contact, now);
   const isOverdue = isVisitOverdue(contact, now);
   const stage = stageOf(contact, isOverdue);
+  // Newest first; the latest one is always on the card, the rest fold away.
+  const [latestEvent, ...earlierEvents] = [...contact.events].reverse();
   const facts = [
     current?.usableAreaM2 != null &&
       `${formatArea(current.usableAreaM2)} usable`,
@@ -341,9 +351,10 @@ export function ContactCard({
           <div className="flex items-center gap-2 rounded-md bg-warning/15 py-1.5 pr-1.5 pl-2 text-xs text-warning-foreground">
             <RiAlarmWarningLine className="size-4 shrink-0" />
             <span className="flex-1">
-              No activity for {daysSinceActivity(contact, now)} days.
+              No activity for {daysSinceActivity(contact, now)} days. Chased
+              them up?
             </span>
-            <FollowUpButton contactId={contact.id} size="xs" />
+            <FollowUpButton contact={contact} size="xs" />
           </div>
         )}
 
@@ -429,30 +440,36 @@ export function ContactCard({
           {contact.notes || "+ Add contact details or notes"}
         </button>
 
-        {contact.events.length > 0 && (
+        {latestEvent && (
           <Collapsible>
-            <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
-              <RiHistoryLine className="size-3.5" />
-              History · {contact.events.length}
+            <CollapsibleTrigger className="flex w-full items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
+              <RiHistoryLine className="size-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate text-left">
+                <span className="font-mono">
+                  {formatDayMonth(latestEvent.createdAt)}
+                </span>{" "}
+                {eventLine(latestEvent)}
+              </span>
+              {earlierEvents.length > 0 && (
+                <span className="shrink-0">
+                  +{earlierEvents.length} earlier
+                </span>
+              )}
             </CollapsibleTrigger>
-            <CollapsibleContent>
-              <ol className="mt-2 space-y-1 border-l pl-3 text-xs text-muted-foreground">
-                {[...contact.events].reverse().map((event) => {
-                  const detail = eventDetail(event);
-                  return (
+            {earlierEvents.length > 0 && (
+              <CollapsibleContent>
+                <ol className="mt-2 space-y-1 border-l pl-3 text-xs text-muted-foreground">
+                  {earlierEvents.map((event) => (
                     <li key={event.id} className="flex gap-2">
                       <span className="w-12 shrink-0 font-mono">
                         {formatDayMonth(event.createdAt)}
                       </span>
-                      <span>
-                        {EVENT_LABEL[event.kind]}
-                        {detail && `: ${detail}`}
-                      </span>
+                      <span>{eventLine(event)}</span>
                     </li>
-                  );
-                })}
-              </ol>
-            </CollapsibleContent>
+                  ))}
+                </ol>
+              </CollapsibleContent>
+            )}
           </Collapsible>
         )}
 

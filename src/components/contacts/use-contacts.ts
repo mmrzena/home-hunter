@@ -53,17 +53,19 @@ export function useSaveContact() {
   });
 }
 
-/** Logs a chase-up on a contact, which also takes it off the waiting list. */
+export type FollowUp = { id: number; note: string };
+
+/** Logs a chase-up (and what it was) on a contact, which also takes it off the waiting list. */
 export function useFollowUp() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) =>
+    mutationFn: (followUp: FollowUp) =>
       fetchJson("/api/contacts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify(followUp),
       }),
-    onSuccess: (_, id) => {
+    onSuccess: (_, { id }) => {
       const updatedAt = new Date().toISOString();
       queryClient.setQueryData<Contact[]>(CONTACTS_KEY, (contacts) =>
         contacts?.map((entry) =>

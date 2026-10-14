@@ -33,7 +33,7 @@ export function ChaseUpList({
           meta={`${daysSinceActivity(contact, now)} days without activity`}
         >
           {contact.contactPhone && <CallButton phone={contact.contactPhone} />}
-          <FollowUpButton contactId={contact.id} size="sm" />
+          <FollowUpButton contact={contact} size="sm" />
         </AgendaRow>
       ))}
     </AgendaSection>

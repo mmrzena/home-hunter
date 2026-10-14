@@ -1,29 +1,30 @@
 "use client";
 
 import { RiCheckLine } from "@remixicon/react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { useFollowUp } from "./use-contacts";
+import type { Contact } from "@/lib/contacts";
+import { FollowUpDialog } from "./follow-up-dialog";
 
-/** "I chased them up today" — logs it and takes the house off the waiting list. */
+/** "I chased them up" — asks what you did, then logs it and takes the house off the waiting list. */
 export function FollowUpButton({
-  contactId,
+  contact,
   size,
 }: {
-  contactId: number;
+  contact: Contact;
   size: "xs" | "sm";
 }) {
-  const followUp = useFollowUp();
+  const [isOpen, setIsOpen] = useState(false);
   return (
-    <Button
-      variant="outline"
-      size={size}
-      disabled={followUp.isPending}
-      title="Log that you chased them up today"
-      onClick={() => followUp.mutate(contactId)}
-    >
-      {size === "sm" && <RiCheckLine className="size-4" />}
-      Followed up
-    </Button>
+    <>
+      <Button variant="outline" size={size} onClick={() => setIsOpen(true)}>
+        {size === "sm" && <RiCheckLine className="size-4" />}
+        Followed up
+      </Button>
+      {isOpen && (
+        <FollowUpDialog contact={contact} onClose={() => setIsOpen(false)} />
+      )}
+    </>
   );
 }

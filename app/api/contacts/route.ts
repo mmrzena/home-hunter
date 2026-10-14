@@ -220,16 +220,19 @@ export async function PUT(request: NextRequest) {
   return NextResponse.json({ contact: toContact(row, null, []) });
 }
 
-const FOLLOW_UP = z.object({ id: z.number().int() });
+const FOLLOW_UP = z.object({
+  id: z.number().int(),
+  note: z.string().trim().max(2_000),
+});
 
-/** "I chased them up" — logs the nudge and resets the waiting-for-a-reply clock. */
+/** "I chased them up" — logs the nudge (and what it was) and resets the waiting-for-a-reply clock. */
 export async function POST(request: NextRequest) {
   const userId = await getUserId(request);
   if (!userId) return unauthorized();
   const parsed = FOLLOW_UP.safeParse(await request.json().catch(() => null));
   if (!parsed.success)
     return NextResponse.json({ error: "Bad request" }, { status: 400 });
-  const { id } = parsed.data;
+  const { id, note } = parsed.data;
   const touched = await db.transaction(async (tx) => {
     const [row] = await tx
       .update(houseContacts)
@@ -239,7 +242,7 @@ export async function POST(request: NextRequest) {
     if (!row) return false;
     await tx
       .insert(houseContactEvents)
-      .values({ contactId: row.id, kind: "followed_up", detail: null });
+      .values({ contactId: row.id, kind: "followed_up", detail: note || null });
     return true;
   });
   if (!touched)
