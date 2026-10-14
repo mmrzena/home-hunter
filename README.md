@@ -19,7 +19,10 @@ Postgres 16 + PostGIS.
    Bezrealitky (the no-commission portal, via its GraphQL API) and České reality
    (scraped); disable either with `ENABLE_BEZREALITKY=false` /
    `ENABLE_CESKEREALITY=false`. The same house listed on several portals is
-   deduped into one card.
+   deduped into one card. A portal whose search answers 401/403/404/451 is
+   skipped for the day with a warning on the run (its rows stay active) rather
+   than failing the whole pipeline — Sreality has returned 404 to cloud egress
+   addresses while serving home connections normally.
 2. **Normalize** — maps each source into one schema (price, areas, disposition,
    GPS, seller, photos, labels …).
 3. **Hash** — computes a 64-bit perceptual hash (dHash) per image **in memory**;

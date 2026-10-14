@@ -9,7 +9,7 @@ import {
   LAND_SOURCES,
   type LandSource,
 } from "../sources/land";
-import { advanceCrawl } from "./crawl";
+import { advanceCrawl, isSourceBlocked, skipBlockedSource } from "./crawl";
 import { nextPhase, type PipelineState } from "./state";
 
 const LAND_PRICE_BATCH = 300;
@@ -29,11 +29,15 @@ export async function landIngestBatch(
     return;
   }
   await sleep(Math.min(env.REQUEST_DELAY_MS, 2_000));
-  const { plots, isLastPage } = await fetchLandPage(
-    source,
-    state.regionIndex,
-    state.page,
-  );
+  let page: Awaited<ReturnType<typeof fetchLandPage>>;
+  try {
+    page = await fetchLandPage(source, state.regionIndex, state.page);
+  } catch (error) {
+    if (!isSourceBlocked(error)) throw error;
+    skipBlockedSource(state, { table: "land_listings", source }, error);
+    return;
+  }
+  const { plots, isLastPage } = page;
   const rows = plots
     .filter((plot) => inRegionBbox(plot.lat, plot.lng))
     .map((plot) => ({

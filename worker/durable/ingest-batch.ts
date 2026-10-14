@@ -7,7 +7,7 @@ import { createBezrealitkySource } from "../sources/bezrealitky";
 import { createCeskeRealitySource } from "../sources/ceskereality";
 import { createSrealitySource } from "../sources/sreality";
 import { askingPrice, type RawListing } from "../sources/types";
-import { advanceCrawl } from "./crawl";
+import { advanceCrawl, isSourceBlocked, skipBlockedSource } from "./crawl";
 import { type PipelineState, startLandIngest } from "./state";
 
 function sourceFor(state: PipelineState) {
@@ -72,7 +72,18 @@ export async function ingestBatch(
   if (state.pageItems === null) {
     // A whole fetched page is checkpointed before any of its listings are processed.
     const items: RawListing[] = [];
-    for await (const listing of source.listPages()) items.push(listing);
+    try {
+      for await (const listing of source.listPages()) items.push(listing);
+    } catch (error) {
+      if (!isSourceBlocked(error)) throw error;
+      skipBlockedSource(
+        state,
+        { table: "listings", source: source.name },
+        error,
+      );
+      if (state.sourceIndex >= state.sources.length) startLandIngest(state);
+      return;
+    }
     state.pageItems = items;
     state.itemIndex = 0;
     state.pageComplete = source.completed();
