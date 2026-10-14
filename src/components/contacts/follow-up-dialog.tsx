@@ -50,7 +50,7 @@ export function FollowUpDialog({
 
   return (
     <Dialog open onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="top-4 translate-y-0 sm:top-1/2 sm:max-w-md sm:-translate-y-1/2">
         <form onSubmit={handleSubmit} className="grid gap-4">
           <DialogHeader className="text-left">
             <DialogTitle>Log a follow-up</DialogTitle>
