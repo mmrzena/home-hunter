@@ -21,6 +21,9 @@ import { useRef, useState } from "react";
  *
  * `touch-action: pan-y` on the swiped element lets the list scroll vertically
  * untouched; we only claim the gesture once it's clearly horizontal.
+ *
+ * With `isEnabled: false` (a card shown on its own, not in a list) there is no
+ * gesture and `dismiss` just runs the action — the card stays where it is.
  */
 
 export type ExitKind = "seen" | "restore" | "like" | "unlike";
@@ -38,9 +41,11 @@ type Gesture = { startX: number; startY: number; horizontal: boolean };
 export function useSwipeToDismiss({
   swipeKind,
   onSwipe,
+  isEnabled = true,
 }: {
   swipeKind: ExitKind;
   onSwipe: () => void;
+  isEnabled?: boolean;
 }) {
   const [dx, setDx] = useState(0);
   const [sliding, setSliding] = useState(false);
@@ -86,6 +91,10 @@ export function useSwipeToDismiss({
     action: () => void = onSwipe,
     kind: ExitKind = swipeKind,
   ) => {
+    if (!isEnabled) {
+      action();
+      return;
+    }
     dismissing.current = true;
     pendingAction.current = action;
     setExitKind(kind);
@@ -110,7 +119,7 @@ export function useSwipeToDismiss({
     swipeProps: {
       ref: slideRef,
       onPointerDown(event: PointerEvent) {
-        if (event.pointerType === "mouse") return;
+        if (!isEnabled || event.pointerType === "mouse") return;
         gesture.current = {
           startX: event.clientX,
           startY: event.clientY,

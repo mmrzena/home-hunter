@@ -43,7 +43,7 @@ import {
 import { statusBadge, TONE_BADGE } from "@/lib/listing-status";
 import { largePhoto } from "@/lib/photos";
 import type { ClusterCard as Card } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, REVEAL_ON_CARD_HOVER, SHOW_CARD_ACTIONS } from "@/lib/utils";
 
 import { ListingFacts } from "./listing-facts";
 import { ListingThumb } from "./listing-thumb";
@@ -93,6 +93,7 @@ export const ClusterCard = memo(function ClusterCard({
   isLiked,
   isHidden,
   isExpanded,
+  isDetail = false,
   onSelect,
   onToggleExpand,
   onToggleLike,
@@ -105,11 +106,15 @@ export const ClusterCard = memo(function ClusterCard({
   isLiked: boolean;
   isHidden: boolean;
   isExpanded: boolean;
-  onSelect: (id: number) => void;
+  /** Shown on its own (the map's detail panel) rather than as a feed row: no
+   *  swipe, no slide-out on triage — the house stays up after a like / seen —
+   *  and the actions are always visible, not revealed on hover. */
+  isDetail?: boolean;
+  onSelect?: (id: number) => void;
   onToggleExpand: (id: number) => void;
   onToggleLike: (id: number) => void;
   onToggleHide: (id: number) => void;
-  onHover: (id: number | null) => void;
+  onHover?: (id: number | null) => void;
 }) {
   const badge = statusBadge(card);
   const hasSpread =
@@ -128,14 +133,19 @@ export const ClusterCard = memo(function ClusterCard({
   } = useSwipeToDismiss({
     swipeKind: isHidden ? "restore" : "seen",
     onSwipe: () => onToggleHide(card.clusterId),
+    isEnabled: !isDetail,
   });
   const exit = EXIT_STYLES[kind];
 
   return (
     <div
-      id={`cluster-card-${card.clusterId}`}
+      id={isDetail ? undefined : `cluster-card-${card.clusterId}`}
       ref={rowRef}
-      className="relative shrink-0 overflow-hidden rounded-lg [contain-intrinsic-size:auto_176px] [content-visibility:auto]"
+      className={cn(
+        "relative shrink-0 overflow-hidden rounded-lg",
+        !isDetail &&
+          "[contain-intrinsic-size:auto_176px] [content-visibility:auto]",
+      )}
     >
       {/* The action revealed beneath the card as it slides out (swipe or button).
           The badge + label scale and fade in with the drag, then pop on arm. */}
@@ -172,9 +182,11 @@ export const ClusterCard = memo(function ClusterCard({
       <div
         className={cn(
           "group/card @container relative touch-pan-y overflow-hidden rounded-lg border bg-background transition-[border-color,box-shadow,background-color] duration-150",
-          isSelected
-            ? "border-primary bg-primary/5 ring-1 ring-primary ring-inset"
-            : "border-border hover:bg-muted/40",
+          isDetail && cn("border-transparent", SHOW_CARD_ACTIONS),
+          !isDetail &&
+            (isSelected
+              ? "border-primary bg-primary/5 ring-1 ring-primary ring-inset"
+              : "border-border hover:bg-muted/40"),
           isHidden && "opacity-60",
         )}
         style={slideStyle}
@@ -183,9 +195,9 @@ export const ClusterCard = memo(function ClusterCard({
         <div className="flex items-stretch">
           <button
             type="button"
-            onClick={() => onSelect(card.clusterId)}
-            onMouseEnter={() => onHover(card.clusterId)}
-            onMouseLeave={() => onHover(null)}
+            onClick={onSelect && (() => onSelect(card.clusterId))}
+            onMouseEnter={onHover && (() => onHover(card.clusterId))}
+            onMouseLeave={onHover && (() => onHover(null))}
             className="flex min-w-0 flex-1 gap-3 rounded-lg p-3 text-left outline-none"
           >
             <ListingThumb
@@ -382,6 +394,7 @@ export const ClusterCard = memo(function ClusterCard({
             aria-label={isLiked ? "Remove from liked" : "I like it"}
             aria-pressed={isLiked}
             title={isLiked ? "Liked — press s to remove" : "I like it (s)"}
+            data-card-action=""
             onClick={() =>
               dismiss(
                 () => onToggleLike(card.clusterId),
@@ -392,7 +405,8 @@ export const ClusterCard = memo(function ClusterCard({
               "flex size-7 items-center justify-center rounded-md transition-colors",
               isLiked
                 ? "text-rose-500 hover:bg-rose-500/10"
-                : "text-muted-foreground hover:bg-muted hover:text-rose-500 lg:opacity-0 lg:focus-visible:opacity-100 lg:group-hover/card:opacity-100",
+                : "text-muted-foreground hover:bg-muted hover:text-rose-500",
+              !isLiked && REVEAL_ON_CARD_HOVER,
             )}
           >
             {isLiked ? (
@@ -405,11 +419,11 @@ export const ClusterCard = memo(function ClusterCard({
             type="button"
             aria-label={isHidden ? "Restore listing" : "Mark as seen"}
             title={isHidden ? "Restore" : "Mark seen (x)"}
+            data-card-action=""
             onClick={() => dismiss()}
             className={cn(
               "flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-              !isHidden &&
-                "lg:opacity-0 lg:focus-visible:opacity-100 lg:group-hover/card:opacity-100",
+              !isHidden && REVEAL_ON_CARD_HOVER,
             )}
           >
             {isHidden ? (

@@ -19,13 +19,9 @@ import { toast } from "sonner";
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { fetchJson } from "@/lib/fetch-json";
 import { isInBounds, type MapBounds } from "@/lib/map-bounds";
@@ -36,10 +32,9 @@ import { cn } from "@/lib/utils";
 import { ClusterCard as Card } from "./cluster-card";
 import { FilterBar } from "./filter-bar";
 import { FilterPrefsSync } from "./filter-prefs-sync";
-import { MapPreviewCard } from "./map-preview-card";
+import { MapDetailPanel } from "./map-detail-panel";
 import { ShortcutsDialog } from "./shortcuts-dialog";
 import { TriageSync } from "./triage-sync";
-import { useIsDesktop } from "./use-is-desktop";
 import { useKeyboardNav } from "./use-keyboard-nav";
 
 const ListingMap = dynamic(
@@ -73,6 +68,21 @@ const LEGEND = [
 
 // Stable empty reference so a not-yet-loaded by-id query doesn't churn the map.
 const NO_CARDS: ClusterCard[] = [];
+
+/**
+ * Bring a feed card into view. Two passes: off-screen cards are only estimated
+ * (`content-visibility: auto`), so the first, instant scroll lands near the card
+ * and lets its neighbours lay out for real; the second settles on it.
+ */
+function scrollCardIntoView(id: number) {
+  const card = () => document.getElementById(`cluster-card-${id}`);
+  requestAnimationFrame(() => {
+    card()?.scrollIntoView({ block: "nearest" });
+    requestAnimationFrame(() =>
+      card()?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+    );
+  });
+}
 
 /** `/api/clusters?id=…` — fetch a set of clusters by id, ignoring the filters. */
 function byIdUrl(ids: number[]): string {
@@ -115,16 +125,17 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     () => new Map(),
   );
   const [helpOpen, setHelpOpen] = useState(false);
-  // Mobile shows one pane at a time (toggled below); desktop shows both split.
-  const [mobileView, setMobileView] = useState<"list" | "map">("list");
+  // The map is the screen; the feed is an opt-in column beside it (desktop) or
+  // over it (phone), off by default.
+  const [isListVisible, setIsListVisible] = useState(false);
   // "Only in view": the feed follows the map viewport. The markers keep
   // showing the whole set so panning can bring houses back.
   const [isOnlyInView, setIsOnlyInView] = useState(false);
-  // Captured on a mobile marker tap rather than looked up by id, so liking or
-  // hiding it (which drops it out of the current tab) doesn't yank the card.
+  // The house in the map's detail panel — captured, not looked up by id, so
+  // liking or hiding it (which drops it out of the current tab) doesn't yank
+  // the panel.
   const [tappedCard, setTappedCard] = useState<ClusterCard | null>(null);
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
-  const isDesktop = useIsDesktop();
 
   const { liked, hidden } = useTriage();
   // Liked is the one filter-agnostic collection (always visible), so its count
@@ -133,25 +144,6 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   const likedCount = liked.size;
 
   const likedIds = useMemo(() => [...liked].sort((a, b) => a - b), [liked]);
-
-  const selectAndScroll = useCallback((id: number) => {
-    setSelectedId(id);
-    requestAnimationFrame(() => {
-      document
-        .getElementById(`cluster-card-${id}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    });
-  }, []);
-
-  // The chevron (and keyboard "o") toggle the inline detail. A plain click on
-  // the card body or a map marker only selects — it never auto-expands.
-  const handleToggleExpand = useCallback(
-    (id: number) => {
-      selectAndScroll(id);
-      setExpandedId((current) => (current === id ? null : id));
-    },
-    [selectAndScroll],
-  );
 
   const config = useQuery({
     queryKey: ["config"],
@@ -213,6 +205,29 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   );
   const seenCards = useMemo(() => byRecency(cards, hidden), [cards, hidden]);
 
+  // Stable (no deps) so the memoised feed cards keep their handler identity.
+  const selectAndScroll = useCallback((id: number) => {
+    setSelectedId(id);
+    scrollCardIntoView(id);
+  }, []);
+
+  // Select + open the map's detail panel. Any house a pin can stand for is in
+  // the pool or this session's un-likes.
+  const selectInPanel = (id: number) => {
+    selectAndScroll(id);
+    setTappedCard(cardsById.get(id) ?? unlikedCards.get(id) ?? null);
+  };
+
+  // The chevron (and keyboard "o") toggle the gallery + sources. A plain click
+  // on the card body or a map marker only selects — it never auto-expands.
+  const handleToggleExpand = useCallback(
+    (id: number) => {
+      selectAndScroll(id);
+      setExpandedId((current) => (current === id ? null : id));
+    },
+    [selectAndScroll],
+  );
+
   // This session's un-likes, newest first, minus any since re-liked or marked
   // seen. Filter-agnostic by construction — the cards are captured, not queried.
   const unlikedList = useMemo(() => {
@@ -263,6 +278,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       const wasLiked = liked.has(id);
       triageStore.toggleLike(id);
       setUnlikedCards((prev) => {
+        if (!wasLiked && !prev.has(id)) return prev;
         const next = new Map(prev);
         if (wasLiked) {
           const card = cardsById.get(id);
@@ -276,10 +292,11 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     [liked, cardsById],
   );
 
+  // With the feed hidden, the panel is the only place to see what j/k land on.
   useKeyboardNav({
     ids: listed.map((card) => card.clusterId),
     selectedId,
-    onSelect: selectAndScroll,
+    onSelect: isListVisible ? selectAndScroll : selectInPanel,
     onOpenDetail: handleToggleExpand,
     onLike: handleToggleLike,
     onHide: (id) => triageStore.hide(id),
@@ -289,16 +306,20 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       else setSelectedId(null);
     },
     onToggleHelp: () => setHelpOpen((open) => !open),
+    onToggleList: () => setIsListVisible((shown) => !shown),
   });
 
-  // A house you triaged from the preview stays up; one that a filter change
-  // dropped from the map doesn't.
-  const previewCard =
-    !isDesktop &&
+  // The detail panel follows the selection (Esc clears both). A house you
+  // triaged from it stays up; one that a filter change dropped from the map
+  // doesn't.
+  const isListedOrTriaged = (id: number) =>
+    liked.has(id) ||
+    hidden.has(id) ||
+    visible.some((card) => card.clusterId === id);
+  const detailCard =
     tappedCard &&
-    (liked.has(tappedCard.clusterId) ||
-      hidden.has(tappedCard.clusterId) ||
-      visible.some((card) => card.clusterId === tappedCard.clusterId))
+    tappedCard.clusterId === selectedId &&
+    isListedOrTriaged(tappedCard.clusterId)
       ? tappedCard
       : null;
 
@@ -313,26 +334,22 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     [effectiveView, cards, liked, likedCards, visible],
   );
 
-  const handleMarkerSelect = (id: number) => {
-    selectAndScroll(id);
-    if (!isDesktop)
-      setTappedCard(mapCards.find((card) => card.clusterId === id) ?? null);
-  };
-
-  const handleClosePreview = () => {
+  // Also the map's background click, which mostly lands with nothing open.
+  const handleCloseDetail = () => {
+    if (tappedCard === null && selectedId === null) return;
     setTappedCard(null);
     setSelectedId(null);
   };
 
   // Lands on the tab that actually lists the house — after a like / seen from
-  // the preview it has left the current one.
+  // the panel it has left the current one.
   const handleOpenInList = (card: ClusterCard) => {
     const id = card.clusterId;
     if (!visible.some((entry) => entry.clusterId === id))
       setView(liked.has(id) ? "liked" : hidden.has(id) ? "hidden" : "all");
     if (mapBounds && !isInBounds(card, mapBounds)) setIsOnlyInView(false);
     setTappedCard(null);
-    setMobileView("list");
+    setIsListVisible(true);
     setExpandedId(id);
     selectAndScroll(id);
   };
@@ -353,128 +370,148 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     [hidden],
   );
 
-  const feedColumn = (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b px-3 py-2">
-        <ToggleGroup
-          type="single"
+  // Always on screen, so you never scroll a long feed to reach these.
+  const triageBar = (
+    <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b px-3 py-2">
+      <ToggleGroup
+        type="single"
+        variant="outline"
+        size="sm"
+        value={effectiveView}
+        onValueChange={(next) => next && setView(next as TriageView)}
+      >
+        <ToggleGroupItem value="all" className="h-8 text-xs">
+          All {allCount}
+        </ToggleGroupItem>
+        <ToggleGroupItem
+          value="liked"
+          className="h-8 gap-1 text-xs"
+          disabled={likedCount === 0}
+        >
+          <RiHeart3Fill className="size-3.5 text-rose-500" />
+          {likedCount}
+        </ToggleGroupItem>
+        <ToggleGroupItem
+          value="hidden"
+          className="h-8 text-xs"
+          disabled={hiddenCount === 0}
+        >
+          Seen {hiddenCount > 0 ? hiddenCount : ""}
+        </ToggleGroupItem>
+        {unlikedCount > 0 && (
+          <ToggleGroupItem value="unliked" className="h-8 text-xs">
+            Unliked {unlikedCount}
+          </ToggleGroupItem>
+        )}
+      </ToggleGroup>
+      {isOnlyInView && (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="h-8 shrink-0 gap-1 text-xs"
+          title="Showing only houses inside the map view"
+          onClick={() => setIsOnlyInView(false)}
+        >
+          <RiMap2Line className="size-3.5" /> {listed.length} in view
+          <RiCloseLine className="size-3.5" />
+        </Button>
+      )}
+      {effectiveView === "hidden" && hiddenCount > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto h-8 shrink-0 text-xs"
+          onClick={() => triageStore.clearHidden()}
+        >
+          Restore all
+        </Button>
+      )}
+      {effectiveView === "all" && listed.length > 0 && (
+        <Button
           variant="outline"
           size="sm"
-          value={effectiveView}
-          onValueChange={(next) => next && setView(next as TriageView)}
+          className="ml-auto h-8 shrink-0 gap-1.5 text-xs"
+          title={
+            isOnlyInView
+              ? "Mark every house inside the map view as seen"
+              : "Mark every house in this feed as seen"
+          }
+          onClick={handleMarkAllSeen}
         >
-          <ToggleGroupItem value="all" className="h-8 text-xs">
-            All {allCount}
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="liked"
-            className="h-8 gap-1 text-xs"
-            disabled={likedCount === 0}
-          >
-            <RiHeart3Fill className="size-3.5 text-rose-500" />
-            {likedCount}
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="hidden"
-            className="h-8 text-xs"
-            disabled={hiddenCount === 0}
-          >
-            Seen {hiddenCount > 0 ? hiddenCount : ""}
-          </ToggleGroupItem>
-          {unlikedCount > 0 && (
-            <ToggleGroupItem value="unliked" className="h-8 text-xs">
-              Unliked {unlikedCount}
-            </ToggleGroupItem>
-          )}
-        </ToggleGroup>
-        {effectiveView === "hidden" && hiddenCount > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="ml-auto h-8 text-xs"
-            onClick={() => triageStore.clearHidden()}
-          >
-            Restore all
-          </Button>
-        )}
-        {isOnlyInView && (
-          <Button
-            variant="secondary"
-            size="sm"
-            className="ml-auto h-8 gap-1 text-xs"
-            title="Showing only houses inside the map view"
-            onClick={() => setIsOnlyInView(false)}
-          >
-            <RiMap2Line className="size-3.5" /> {listed.length} in view
-            <RiCloseLine className="size-3.5" />
-          </Button>
-        )}
-      </div>
+          <RiCheckDoubleLine className="size-3.5" />
+          Mark {listed.length} seen
+        </Button>
+      )}
+      <Toggle
+        variant="outline"
+        size="sm"
+        pressed={isListVisible}
+        onPressedChange={setIsListVisible}
+        aria-label="Show the list"
+        title="Show the list (l)"
+        className="hidden h-8 shrink-0 gap-1.5 text-xs lg:inline-flex"
+      >
+        <RiListUnordered className="size-3.5" />
+        List
+      </Toggle>
+    </div>
+  );
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3 max-lg:pb-20">
-        {activeQuery.isLoading && visible.length === 0 ? (
-          Array.from({ length: 6 }, (_, index) => (
-            <Skeleton key={`skeleton-${index}`} className="h-40 w-full" />
-          ))
-        ) : activeQuery.isError ? (
-          <p className="p-4 text-sm text-destructive">
-            Couldn't load listings. Is the worker pipeline run and the DB up?
-          </p>
-        ) : listed.length === 0 ? (
-          isOnlyInView && visible.length > 0 ? (
-            <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
-              <RiMap2Line className="size-6" />
-              <p className="text-sm">
-                No houses inside the map view. Pan or zoom out, or turn off
-                "Only in view".
-              </p>
-            </div>
-          ) : (
-            <EmptyState view={effectiveView} hasCards={cards.length > 0} />
-          )
+  // Built only while shown — it's ~500 card elements per render otherwise.
+  const feedColumn = isListVisible && (
+    <div className="z-10 flex w-[420px] shrink-0 flex-col gap-2 overflow-y-auto border-r bg-background p-3 max-lg:absolute max-lg:inset-0 max-lg:w-auto max-lg:border-r-0 max-lg:pb-20">
+      {activeQuery.isLoading && visible.length === 0 ? (
+        Array.from({ length: 6 }, (_, index) => (
+          <Skeleton key={`skeleton-${index}`} className="h-40 w-full" />
+        ))
+      ) : activeQuery.isError ? (
+        <p className="p-4 text-sm text-destructive">
+          Couldn't load listings. Is the worker pipeline run and the DB up?
+        </p>
+      ) : listed.length === 0 ? (
+        isOnlyInView && visible.length > 0 ? (
+          <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
+            <RiMap2Line className="size-6" />
+            <p className="text-sm">
+              No houses inside the map view. Pan or zoom out, or turn off "Only
+              in view".
+            </p>
+          </div>
         ) : (
-          listed.map((card) => (
-            <Card
-              key={card.clusterId}
-              card={card}
-              anchorLabel={anchor?.label ?? null}
-              isSelected={card.clusterId === selectedId}
-              isLiked={liked.has(card.clusterId)}
-              isHidden={hidden.has(card.clusterId)}
-              isExpanded={card.clusterId === expandedId}
-              onSelect={selectAndScroll}
-              onToggleExpand={handleToggleExpand}
-              onToggleLike={handleToggleLike}
-              onToggleHide={handleToggleHide}
-              onHover={setHoveredId}
-            />
-          ))
-        )}
-        {effectiveView === "all" && listed.length > 0 && (
-          <Button
-            variant="outline"
-            className="mt-2 shrink-0 gap-1.5"
-            onClick={handleMarkAllSeen}
-          >
-            <RiCheckDoubleLine className="size-4" />
-            Mark all {listed.length} as seen
-          </Button>
-        )}
-      </div>
+          <EmptyState view={effectiveView} hasCards={cards.length > 0} />
+        )
+      ) : (
+        listed.map((card) => (
+          <Card
+            key={card.clusterId}
+            card={card}
+            anchorLabel={anchor?.label ?? null}
+            isSelected={card.clusterId === selectedId}
+            isLiked={liked.has(card.clusterId)}
+            isHidden={hidden.has(card.clusterId)}
+            isExpanded={card.clusterId === expandedId}
+            onSelect={selectAndScroll}
+            onToggleExpand={handleToggleExpand}
+            onToggleLike={handleToggleLike}
+            onToggleHide={handleToggleHide}
+            onHover={setHoveredId}
+          />
+        ))
+      )}
     </div>
   );
 
   const mapPanel = (
-    <div className="relative size-full">
+    <div className="relative min-h-0 min-w-0 flex-1">
       <ListingMap
         clusters={mapCards}
         likedIds={liked}
         seenIds={hidden}
         selectedId={selectedId}
         hoveredId={hoveredId}
-        onSelect={handleMarkerSelect}
+        onSelect={selectInPanel}
         onBoundsChange={setMapBounds}
-        onBackgroundClick={isDesktop ? undefined : handleClosePreview}
+        onBackgroundClick={handleCloseDetail}
         fitKey={`${query}|${effectiveView}`}
         anchor={anchor}
       />
@@ -487,29 +524,35 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
         Only in view
         <span className="font-mono text-muted-foreground">{inViewCount}</span>
       </Label>
-      {previewCard ? (
-        <MapPreviewCard
-          key={previewCard.clusterId}
-          card={previewCard}
+      {detailCard && (
+        <MapDetailPanel
+          key={detailCard.clusterId}
+          card={detailCard}
           anchorLabel={anchor?.label ?? null}
-          isLiked={liked.has(previewCard.clusterId)}
-          isHidden={hidden.has(previewCard.clusterId)}
-          onOpen={handleOpenInList}
+          isLiked={liked.has(detailCard.clusterId)}
+          isHidden={hidden.has(detailCard.clusterId)}
+          isExpanded={detailCard.clusterId === expandedId}
+          onToggleExpand={handleToggleExpand}
           onToggleLike={handleToggleLike}
           onToggleHide={handleToggleHide}
-          onClose={handleClosePreview}
-          className="absolute inset-x-3 bottom-16 z-10"
+          onOpenInList={handleOpenInList}
+          onClose={handleCloseDetail}
         />
-      ) : (
-        <div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 rounded-md border bg-background/90 p-2 text-xs shadow-sm backdrop-blur">
-          {LEGEND.map((item) => (
-            <span key={item.label} className="flex items-center gap-1.5">
-              {item.swatch}
-              {item.label}
-            </span>
-          ))}
-        </div>
       )}
+      {/* The legend yields to the panel on a phone, where both sit at the bottom. */}
+      <div
+        className={cn(
+          "pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 rounded-md border bg-background/90 p-2 text-xs shadow-sm backdrop-blur",
+          detailCard && "max-lg:hidden",
+        )}
+      >
+        {LEGEND.map((item) => (
+          <span key={item.label} className="flex items-center gap-1.5">
+            {item.swatch}
+            {item.label}
+          </span>
+        ))}
+      </div>
     </div>
   );
 
@@ -551,74 +594,34 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       </AppHeader>
 
       <FilterBar config={config.data} />
+      {triageBar}
 
-      {isDesktop ? (
-        <ResizablePanelGroup
-          orientation="horizontal"
-          className="min-h-0 flex-1"
+      {/* The map stays mounted whether or not the feed is shown. */}
+      <div className="relative flex min-h-0 flex-1">
+        {feedColumn}
+        {mapPanel}
+
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          value={isListVisible ? "list" : "map"}
+          onValueChange={(next) => next && setIsListVisible(next === "list")}
+          className="-translate-x-1/2 absolute bottom-4 left-1/2 z-20 rounded-full border bg-background/95 shadow-lg backdrop-blur lg:hidden"
         >
-          <ResizablePanel
-            defaultSize="37%"
-            minSize="24%"
-            maxSize="62%"
-            className="min-h-0 overflow-hidden"
+          <ToggleGroupItem
+            value="list"
+            className="h-9 gap-1.5 rounded-full px-4"
           >
-            {feedColumn}
-          </ResizablePanel>
-          <ResizableHandle withHandle />
-          <ResizablePanel
-            defaultSize="63%"
-            minSize="30%"
-            className="min-h-0 overflow-hidden"
+            <RiListUnordered className="size-4" /> List
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="map"
+            className="h-9 gap-1.5 rounded-full px-4"
           >
-            {mapPanel}
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      ) : (
-        <div className="relative min-h-0 flex-1">
-          {/* Both panes stay mounted at full size — `invisible` (not `hidden`)
-              keeps the map's container sized so it never re-renders at 0×0. */}
-          <div
-            className={cn(
-              "absolute inset-0",
-              mobileView === "map" && "invisible",
-            )}
-          >
-            {feedColumn}
-          </div>
-          <div
-            className={cn(
-              "absolute inset-0",
-              mobileView === "list" && "invisible",
-            )}
-          >
-            {mapPanel}
-          </div>
-
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            value={mobileView}
-            onValueChange={(next) =>
-              next && setMobileView(next as "list" | "map")
-            }
-            className="-translate-x-1/2 absolute bottom-4 left-1/2 z-10 rounded-full border bg-background/95 shadow-lg backdrop-blur"
-          >
-            <ToggleGroupItem
-              value="list"
-              className="h-9 gap-1.5 rounded-full px-4"
-            >
-              <RiListUnordered className="size-4" /> List
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="map"
-              className="h-9 gap-1.5 rounded-full px-4"
-            >
-              <RiMap2Line className="size-4" /> Map
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-      )}
+            <RiMap2Line className="size-4" /> Map
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
 
       <ShortcutsDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </div>

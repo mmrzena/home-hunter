@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { signIn } from "@/lib/auth-client";
 import { type ContactHouse, contactKey, emptyDetails } from "@/lib/contacts";
-import { cn } from "@/lib/utils";
+import { cn, REVEAL_ON_CARD_HOVER } from "@/lib/utils";
 import { ContactDialog } from "./contact-dialog";
 import { useContactsState } from "./contacts-provider";
 import { useDeleteContact, useSaveContact } from "./use-contacts";
@@ -84,11 +84,13 @@ export function ContactButton({
           title={canUse ? label : "Sign in to keep contact notes"}
           disabled={save.isPending}
           onClick={handleClick}
+          data-card-action=""
           className={cn(
             "flex size-7 items-center justify-center rounded-md transition-colors",
             isContacted
               ? "text-primary hover:bg-primary/10"
-              : "text-muted-foreground hover:bg-muted hover:text-primary lg:opacity-0 lg:focus-visible:opacity-100 lg:group-hover/card:opacity-100",
+              : "text-muted-foreground hover:bg-muted hover:text-primary",
+            !isContacted && REVEAL_ON_CARD_HOVER,
           )}
         >
           <Icon className="size-4" />

@@ -92,8 +92,9 @@ at `/`, with navigation between the two pages.
 
 ## The screen (`/`)
 
-One screen: a **MapLibre map** (OpenFreeMap tiles, no key) beside a **feed** of
-deduped cluster cards, kept in sync.
+One screen: a **MapLibre map** (OpenFreeMap tiles, no key) of deduped
+clusters, with a **feed** of cards you can toggle in beside it (desktop, `l`) or
+over it (phone). Both are kept in sync.
 
 - **Filter bar** (URL-persisted, shareable): sort, max price, min usable m²,
   min land m², area multi-select, "good deals", and "new in last N h".
@@ -102,10 +103,13 @@ deduped cluster cards, kept in sync.
   sources, area/land, locality, anchor distance, top reasons, and a Sreality link.
 - **Map markers** are colored by status (with a legend); a **header summary**
   shows counts (deals / new / caution) and a refresh button.
-- **Interaction**: clicking a **marker** opens a popup peek (and scrolls the
-  feed to it); clicking a **card** opens the **detail sheet** — a photo gallery,
-  full facts grid, every deal/scam reason, and **all "listed at" sources** with
-  prices and links.
+- **Triage bar** (always on screen): All / Liked / Seen tabs, the "only in
+  view" count, **Mark N seen** for everything in the current feed (or map view),
+  and the list toggle.
+- **Interaction**: tapping a **marker** opens the house's card in a panel over
+  the map (docked right on desktop, bottom on a phone) — same facts as the feed,
+  with the chevron revealing the photo gallery, description, and **all "listed
+  at" sources** with prices and links. `j`/`k` step through houses there too.
 
 ## Architecture
 

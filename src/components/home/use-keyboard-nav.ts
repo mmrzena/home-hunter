@@ -12,6 +12,7 @@ type NavHandlers = {
   onRefresh: () => void;
   onClear: () => void;
   onToggleHelp: () => void;
+  onToggleList: () => void;
 };
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -91,6 +92,10 @@ export function useKeyboardNav(handlers: NavHandlers) {
         case "r": {
           event.preventDefault();
           handler.onRefresh();
+          return;
+        }
+        case "l": {
+          handler.onToggleList();
           return;
         }
         case "Escape": {
