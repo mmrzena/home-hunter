@@ -10,6 +10,7 @@ const PAGES = [
   { key: "listings", href: "/", label: "Listings" },
   { key: "analyse", href: "/analyse", label: "Analyse" },
   { key: "contacts", href: "/contacts", label: "Contacted" },
+  { key: "trends", href: "/trends", label: "Market" },
 ] as const;
 
 export type AppPage = (typeof PAGES)[number]["key"];

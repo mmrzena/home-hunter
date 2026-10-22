@@ -37,7 +37,7 @@ export const HUBS: Record<HubKey, Hub> = {
 // Okres Jičín's farthest villages (Pecka, Žlunice, Kozojedy) sit ~20–22 km from
 // the town; Křinec, Rožďalovice and the Mladá Boleslav / Nymburk belt start
 // beyond that and stay Prague commutes.
-const JICIN_RADIUS_KM = 22;
+export const JICIN_RADIUS_KM = 22;
 
 /** Straight-line distance to the hub this location belongs to. */
 export type HubDistance = { key: HubKey; label: string; km: number };

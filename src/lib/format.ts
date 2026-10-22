@@ -130,3 +130,29 @@ export function formatDateAdded(iso: string): string {
 export function formatDateTime(iso: string): string {
   return dateTime.format(new Date(iso));
 }
+
+/** "8 Oct 2026" in Prague time. */
+export function formatDate(iso: string): string {
+  return dayMonthYear.format(new Date(iso));
+}
+
+/** Czech decimal comma: 7.25 → "7,3" at one digit. */
+export function formatDecimal(value: number, digits: number): string {
+  return value.toFixed(digits).replace(".", ",");
+}
+
+export function formatPct(value: number, digits = 0): string {
+  return `${formatDecimal(value, digits)} %`;
+}
+
+/** A fractional change as "+1,2 %", "−0,8 %" or "±0,0 %". */
+export function formatSignedPct(fraction: number): string {
+  const rounded = Number((fraction * 100).toFixed(1));
+  const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "±";
+  return `${sign}${formatPct(Math.abs(rounded), 1)}`;
+}
+
+export function formatDays(days: number | null): string {
+  if (days == null) return "—";
+  return `${Math.round(days)} days`;
+}
