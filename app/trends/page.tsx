@@ -4,9 +4,8 @@ import { getMarketTrends, parseSegment } from "@/lib/market-trends";
 import { TrendsScreen } from "./_components/trends-screen";
 
 export const metadata: Metadata = {
-  title: "Market trends · home-hunter",
-  description:
-    "Asking prices, supply, price cuts and time on the market, week by week.",
+  title: "Market · home-hunter",
+  description: "Asking prices, supply and price cuts by area, week by week.",
 };
 
 export default async function TrendsPage({

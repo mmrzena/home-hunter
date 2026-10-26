@@ -2,7 +2,7 @@ import type { SegmentSummary } from "@/lib/market-trends";
 
 const DAYS_PER_MONTH = 30.4;
 const MIN_SAMPLE = 10;
-export const MIN_SAME_HOUSE_SAMPLE = 20;
+const MIN_SAME_HOUSE_SAMPLE = 20;
 
 export function sameHouseChange(summary: SegmentSummary): number | null {
   return summary.sameHouseSample >= MIN_SAME_HOUSE_SAMPLE

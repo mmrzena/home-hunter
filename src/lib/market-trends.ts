@@ -45,10 +45,7 @@ export type WeeklyPoint = {
   medianPpm2: number | null;
   lowerPpm2: number | null;
   upperPpm2: number | null;
-  newListings: number;
-  gone: number;
   priceCuts: number;
-  medianCutPct: number | null;
 };
 
 export type SegmentSummary = {
@@ -58,12 +55,9 @@ export type SegmentSummary = {
   medianPrice: number | null;
   medianPpm2: number | null;
   cutShare: number | null;
-  medianTotalCutPct: number | null;
-  medianDaysToFirstCut: number | null;
   medianDaysOnMarket: number | null;
   fastDaysOnMarket: number | null;
   goneSample: number;
-  staleListings: number;
   sameHouseChange8w: number | null;
   sameHouseSample: number;
   newLast4w: number;
@@ -129,8 +123,7 @@ function priceMoves(listingIds: Fragment) {
   return sql`
     SELECT listing_id, seen_at, price,
       lead(seen_at) OVER w AS to_at,
-      price < lag(price) OVER w AND price >= lag(price) OVER w / 2 AS is_cut,
-      100 * (1 - price::float8 / lag(price) OVER w) AS cut_pct
+      price < lag(price) OVER w AND price >= lag(price) OVER w / 2 AS is_cut
     FROM price_history
     WHERE price > 0 AND listing_id IN (${listingIds})
     WINDOW w AS (PARTITION BY listing_id ORDER BY seen_at)`;
@@ -163,30 +156,16 @@ function getWeekly(segment: MarketSegment): Promise<WeeklyPoint[]> {
           FILTER (WHERE price > 0 AND ${HAS_PLAUSIBLE_AREA}) AS ppm2
       FROM snapshot GROUP BY week
     ),
-    fresh_weeks AS (
-      SELECT ${weekOf(sql`first_seen_at`)} AS week, count(*)::int AS n
-      FROM sel WHERE is_fresh GROUP BY 1
-    ),
-    gone_weeks AS (
-      SELECT ${weekOf(sql`last_seen_at`)} AS week, count(*)::int AS n
-      FROM sel WHERE NOT is_active GROUP BY 1
-    ),
     cut_weeks AS (
-      SELECT ${weekOf(sql`seen_at`)} AS week, count(*)::int AS n,
-        percentile_cont(0.5) WITHIN GROUP (ORDER BY cut_pct) AS median_pct
+      SELECT ${weekOf(sql`seen_at`)} AS week, count(*)::int AS n
       FROM moves WHERE is_cut GROUP BY 1
     )
     SELECT stock.week::text AS week, stock.active,
       CASE WHEN priced >= ${MIN_WEEKLY_SAMPLE} THEN ppm2[2] END AS "medianPpm2",
       CASE WHEN priced >= ${MIN_WEEKLY_SAMPLE} THEN ppm2[1] END AS "lowerPpm2",
       CASE WHEN priced >= ${MIN_WEEKLY_SAMPLE} THEN ppm2[3] END AS "upperPpm2",
-      coalesce(fresh_weeks.n, 0) AS "newListings",
-      coalesce(gone_weeks.n, 0) AS gone,
-      coalesce(cut_weeks.n, 0) AS "priceCuts",
-      cut_weeks.median_pct AS "medianCutPct"
+      coalesce(cut_weeks.n, 0) AS "priceCuts"
     FROM stock
-    LEFT JOIN fresh_weeks USING (week)
-    LEFT JOIN gone_weeks USING (week)
     LEFT JOIN cut_weeks USING (week)
     ORDER BY stock.week`;
 }
@@ -202,13 +181,12 @@ function getSummaries(): Promise<SummaryRow[]> {
     per_listing AS (
       SELECT listing_id,
         (array_agg(price ORDER BY seen_at))[1] AS first_price,
-        min(seen_at) FILTER (WHERE is_cut) AS cut_at,
         (array_agg(price ORDER BY seen_at DESC)
           FILTER (WHERE seen_at <= latest.at - interval '56 days'))[1] AS price_8w
       FROM moves, latest GROUP BY listing_id
     ),
     rows AS (
-      SELECT s.*, latest.at, p.first_price, p.cut_at,
+      SELECT s.*, latest.at,
         coalesce(s.price < p.first_price AND s.price >= p.first_price / 2, false) AS has_cut,
         CASE WHEN s.is_active AND s.price > 0
           AND s.price::float8 / p.price_8w BETWEEN 0.5 AND 1.5
@@ -226,16 +204,11 @@ function getSummaries(): Promise<SummaryRow[]> {
       percentile_cont(0.5) WITHIN GROUP (ORDER BY price::float8 / area)
         FILTER (WHERE is_active AND price > 0 AND ${HAS_PLAUSIBLE_AREA}) AS "medianPpm2",
       avg(has_cut::int::float8) FILTER (WHERE is_active AND price > 0) AS "cutShare",
-      percentile_cont(0.5) WITHIN GROUP (ORDER BY 100 * (1 - price::float8 / first_price))
-        FILTER (WHERE is_active AND has_cut) AS "medianTotalCutPct",
-      percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM cut_at - first_seen_at) / 86400)
-        FILTER (WHERE is_fresh AND cut_at IS NOT NULL) AS "medianDaysToFirstCut",
       percentile_cont(0.5) WITHIN GROUP (ORDER BY ${daysListed})
         FILTER (WHERE is_fresh AND NOT is_active) AS "medianDaysOnMarket",
       percentile_cont(0.25) WITHIN GROUP (ORDER BY ${daysListed})
         FILTER (WHERE is_fresh AND NOT is_active) AS "fastDaysOnMarket",
       count(*) FILTER (WHERE is_fresh AND NOT is_active)::int AS "goneSample",
-      count(*) FILTER (WHERE is_active AND first_seen_at <= at - interval '90 days')::int AS "staleListings",
       avg(change_8w) AS "sameHouseChange8w",
       count(change_8w)::int AS "sameHouseSample",
       count(*) FILTER (WHERE is_fresh AND first_seen_at > at - interval '28 days')::int AS "newLast4w",
