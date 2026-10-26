@@ -66,7 +66,13 @@ function ChartContainer({
         data-chart={chartId}
         // Recharts overrides (axis ticks, grid, tooltip cursor, focus rings)
         // live in app/globals.css under [data-slot="chart"].
-        className={cn("flex aspect-video justify-center text-xs", className)}
+        // min-w-0 on the wrapper and on recharts' responsive container: as flex
+        // items they'd otherwise never shrink below the SVG's last measured
+        // width, so a chart that once rendered wide stays wide on a phone.
+        className={cn(
+          "flex aspect-video min-w-0 justify-center text-xs [&>.recharts-responsive-container]:min-w-0",
+          className,
+        )}
         {...props}
       >
         <ChartStyle id={chartId} config={config} />
