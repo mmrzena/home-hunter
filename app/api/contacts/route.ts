@@ -4,24 +4,31 @@
  * personal data, so it never falls back to an anonymous store.
  */
 
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { db, houseContactEvents, houseContacts, listings, user } from "@/db";
+import {
+  db,
+  houseContactEvents,
+  houseContacts,
+  type listings,
+  user,
+} from "@/db";
 import type { HouseContactEventRow, HouseContactRow } from "@/db/schema";
 import {
   CONTACT_SAVE,
   type Contact,
   type ContactCurrent,
   type ContactEvent,
-  IS_DEV_WITHOUT_SIGN_IN,
+  DEV_USER_ID,
 } from "@/lib/contacts";
+import { selectContactsWithListings } from "@/lib/contacts-db";
 import { hubFor } from "@/lib/hubs";
-import { getSessionUserId } from "@/lib/session";
+import { getUserIdOrDevUser } from "@/lib/session";
 
 const DEV_USER = {
-  id: "local-dev",
+  id: DEV_USER_ID,
   name: "Local dev",
   email: "local-dev@localhost",
   emailVerified: true,
@@ -30,10 +37,10 @@ const DEV_USER = {
 type NewEvent = Pick<ContactEvent, "kind" | "detail">;
 
 async function getUserId(request: NextRequest): Promise<string | null> {
-  const userId = await getSessionUserId(request);
-  if (userId || !IS_DEV_WITHOUT_SIGN_IN) return userId;
-  await db.insert(user).values(DEV_USER).onConflictDoNothing();
-  return DEV_USER.id;
+  const userId = await getUserIdOrDevUser(request);
+  if (userId === DEV_USER_ID)
+    await db.insert(user).values(DEV_USER).onConflictDoNothing();
+  return userId;
 }
 
 function toEvent(row: HouseContactEventRow): ContactEvent {
@@ -110,18 +117,7 @@ export async function GET(request: NextRequest) {
   const userId = await getUserId(request);
   if (!userId) return unauthorized();
   const [rows, eventRows] = await Promise.all([
-    db
-      .select({ contact: houseContacts, listing: listings })
-      .from(houseContacts)
-      .leftJoin(
-        listings,
-        and(
-          eq(listings.source, houseContacts.source),
-          eq(listings.sourceId, houseContacts.sourceId),
-        ),
-      )
-      .where(eq(houseContacts.userId, userId))
-      .orderBy(desc(houseContacts.updatedAt)),
+    selectContactsWithListings(userId),
     db
       .select({ event: houseContactEvents })
       .from(houseContactEvents)

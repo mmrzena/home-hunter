@@ -1,5 +1,6 @@
 import type { PriceBasis, Reason, SourceName } from "@/db/schema";
 import type { HubDistance } from "@/lib/hubs";
+import type { SettlementClass } from "@/lib/places";
 
 export type { Reason };
 
@@ -60,7 +61,7 @@ export type ClusterCard = {
 
   /** Settlement size for the listing's locality (computed server-side). */
   population: number | null;
-  settlementClass: string | null;
+  settlementClass: SettlementClass | null;
 
   /** Every listing in the cluster — the "also listed at" sources. */
   members: ClusterMember[];
@@ -71,6 +72,17 @@ export type ClusterMember = {
   sourceId: string;
   url: string | null;
   price: number | null;
+};
+
+/** Why a "For you" house was suggested: 0–1 match plus up to three reasons. */
+export type SuggestionMatch = { score: number; reasons: string[] };
+
+export type Suggestion = { card: ClusterCard; match: SuggestionMatch };
+
+/** `exampleCount` is how many liked + contacted houses the profile was built from. */
+export type SuggestionResult = {
+  suggestions: Suggestion[];
+  exampleCount: number;
 };
 
 export type AreaFacet = { code: string; name: string; count: number };

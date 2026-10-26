@@ -14,6 +14,7 @@ import {
   RiGroupLine,
   RiHeart3Fill,
   RiHeart3Line,
+  RiSparklingLine,
   RiTrainLine,
 } from "@remixicon/react";
 import Link from "next/link";
@@ -34,6 +35,7 @@ import {
   formatDateAdded,
   formatDateTime,
   formatDistance,
+  formatPct,
   formatPerM2,
   formatPopulation,
   formatPrice,
@@ -42,7 +44,7 @@ import {
 } from "@/lib/format";
 import { statusBadge, TONE_BADGE } from "@/lib/listing-status";
 import { largePhoto } from "@/lib/photos";
-import type { ClusterCard as Card } from "@/lib/types";
+import type { ClusterCard as Card, SuggestionMatch } from "@/lib/types";
 import { cn, REVEAL_ON_CARD_HOVER, SHOW_CARD_ACTIONS } from "@/lib/utils";
 
 import { ListingFacts } from "./listing-facts";
@@ -94,6 +96,7 @@ export const ClusterCard = memo(function ClusterCard({
   isHidden,
   isExpanded,
   isDetail = false,
+  match,
   onSelect,
   onToggleExpand,
   onToggleLike,
@@ -106,6 +109,8 @@ export const ClusterCard = memo(function ClusterCard({
   isLiked: boolean;
   isHidden: boolean;
   isExpanded: boolean;
+  /** Why the For you tab suggested this house. */
+  match?: SuggestionMatch;
   /** Shown on its own (the map's detail panel) rather than as a feed row: no
    *  swipe, no slide-out on triage — the house stays up after a like / seen —
    *  and the actions are always visible, not revealed on hover. */
@@ -245,6 +250,18 @@ export const ClusterCard = memo(function ClusterCard({
               </div>
 
               <ListingFacts card={card} anchorLabel={anchorLabel} />
+
+              {match && (
+                <p className="mt-1 flex items-start gap-1 text-xs text-primary">
+                  <RiSparklingLine className="mt-0.5 size-3 shrink-0" />
+                  <span>
+                    <span className="font-mono font-medium">
+                      {formatPct(match.score * 100)}
+                    </span>{" "}
+                    {["match", ...match.reasons].join(" · ")}
+                  </span>
+                </p>
+              )}
 
               <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                 <span

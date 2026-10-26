@@ -9,6 +9,7 @@ import {
   RiListUnordered,
   RiMap2Line,
   RiRefreshLine,
+  RiSparklingLine,
 } from "@remixicon/react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
@@ -25,15 +26,26 @@ import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { fetchJson } from "@/lib/fetch-json";
 import { isInBounds, type MapBounds } from "@/lib/map-bounds";
+import type {
+  SuggestionLimit,
+  SuggestionRadiusKm,
+} from "@/lib/suggestion-score";
 import { type TriageView, triageStore, useTriage } from "@/lib/triage-store";
-import type { AppConfig, ClusterCard } from "@/lib/types";
+import type {
+  AppConfig,
+  ClusterCard,
+  Suggestion,
+  SuggestionResult,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 import { ClusterCard as Card } from "./cluster-card";
 import { FilterBar } from "./filter-bar";
 import { FilterPrefsSync } from "./filter-prefs-sync";
+import { ForYouEmpty } from "./for-you-empty";
 import { MapDetailPanel } from "./map-detail-panel";
 import { ShortcutsDialog } from "./shortcuts-dialog";
+import { SuggestionCaps } from "./suggestion-caps";
 import { TriageSync } from "./triage-sync";
 import { useKeyboardNav } from "./use-keyboard-nav";
 
@@ -66,8 +78,9 @@ const LEGEND = [
   },
 ];
 
-// Stable empty reference so a not-yet-loaded by-id query doesn't churn the map.
+// Stable empty references so a not-yet-loaded query doesn't churn the map.
 const NO_CARDS: ClusterCard[] = [];
+const NO_SUGGESTIONS: Suggestion[] = [];
 
 /**
  * Bring a feed card into view. Two passes: off-screen cards are only estimated
@@ -136,6 +149,9 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   // the panel.
   const [tappedCard, setTappedCard] = useState<ClusterCard | null>(null);
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
+  const [suggestionLimit, setSuggestionLimit] = useState<SuggestionLimit>(25);
+  const [suggestionRadiusKm, setSuggestionRadiusKm] =
+    useState<SuggestionRadiusKm | null>(null);
 
   const { liked, hidden } = useTriage();
   // Liked is the one filter-agnostic collection (always visible), so its count
@@ -144,6 +160,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
   const likedCount = liked.size;
 
   const likedIds = useMemo(() => [...liked].sort((a, b) => a - b), [liked]);
+  const hiddenIds = useMemo(() => [...hidden].sort((a, b) => a - b), [hidden]);
 
   const config = useQuery({
     queryKey: ["config"],
@@ -170,18 +187,49 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     placeholderData: keepPreviousData,
   });
 
+  // For you: the filtered feed re-ranked by resemblance to your likes and
+  // contacts, server-side. Only fetched while the tab is open, since every
+  // like or seen changes the profile and would refetch it.
+  const suggestionsQuery = useQuery({
+    queryKey: [
+      "suggestions",
+      query,
+      likedIds.join(","),
+      hiddenIds.join(","),
+      suggestionLimit,
+      suggestionRadiusKm,
+    ],
+    queryFn: () =>
+      fetchJson<SuggestionResult>(`/api/suggestions?${query}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          liked: likedIds,
+          hidden: hiddenIds,
+          limit: suggestionLimit,
+          radiusKm: suggestionRadiusKm,
+        }),
+      }),
+    enabled: view === "forYou",
+    placeholderData: keepPreviousData,
+  });
+
   const anchor = config.data?.anchor ?? null;
   const cards = clusters.data ?? NO_CARDS;
+  const suggestions = suggestionsQuery.data?.suggestions ?? NO_SUGGESTIONS;
+  const exampleCount = suggestionsQuery.data?.exampleCount;
 
-  // The All feed respects the filter bar: the filtered server feed minus
-  // anything triaged. Un-liking returns a house to the pool — it reappears here
-  // only if it still matches the filter, otherwise it simply drops out of view.
+  // Every tab except Liked and Seen drops a card the moment it's triaged,
+  // before any refetch. Un-liking returns a house to the pool — it reappears
+  // in All only if it still matches the filter.
+  const isUntriaged = useCallback(
+    (card: ClusterCard) =>
+      !liked.has(card.clusterId) && !hidden.has(card.clusterId),
+    [liked, hidden],
+  );
   const feedCards = useMemo(
-    () =>
-      cards.filter(
-        (card) => !liked.has(card.clusterId) && !hidden.has(card.clusterId),
-      ),
-    [cards, liked, hidden],
+    () => cards.filter(isUntriaged),
+    [cards, isUntriaged],
   );
   // Liked: newest-liked-first, re-filtered through the live set so an optimistic
   // un-like drops a card before the refetch. Seen: the filtered feed intersected
@@ -194,8 +242,15 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
     for (const card of cards) map.set(card.clusterId, card);
     for (const card of likedQuery.data ?? NO_CARDS)
       map.set(card.clusterId, card);
+    for (const suggestion of suggestions)
+      map.set(suggestion.card.clusterId, suggestion.card);
     return map;
-  }, [cards, likedQuery.data]);
+  }, [cards, likedQuery.data, suggestions]);
+
+  const suggestedCards = useMemo(
+    () => suggestions.map((suggestion) => suggestion.card).filter(isUntriaged),
+    [suggestions, isUntriaged],
+  );
 
   // Built from the whole pool, not just likedQuery, so a house liked from the
   // feed is in the Liked list immediately rather than after its by-id refetch.
@@ -230,30 +285,31 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
 
   // This session's un-likes, newest first, minus any since re-liked or marked
   // seen. Filter-agnostic by construction — the cards are captured, not queried.
-  const unlikedList = useMemo(() => {
-    const result: ClusterCard[] = [];
-    for (const card of unlikedCards.values()) {
-      if (!liked.has(card.clusterId) && !hidden.has(card.clusterId))
-        result.push(card);
-    }
-    return result.reverse();
-  }, [unlikedCards, liked, hidden]);
+  const unlikedList = useMemo(
+    () => [...unlikedCards.values()].filter(isUntriaged).reverse(),
+    [unlikedCards, isUntriaged],
+  );
 
   // The Unliked tab vanishes when its list empties; coerce a stale selection
   // back to All so the toggle never points at a missing tab (no effect needed).
   const unlikedCount = unlikedList.length;
   const effectiveView = view === "unliked" && unlikedCount === 0 ? "all" : view;
 
-  // Liked is the only by-id query; All / Seen / Unliked all read the feed query.
-  const activeQuery = effectiveView === "liked" ? likedQuery : clusters;
-  const visible =
-    effectiveView === "liked"
-      ? likedCards
-      : effectiveView === "hidden"
-        ? seenCards
-        : effectiveView === "unliked"
-          ? unlikedList
-          : feedCards;
+  const tabs: Record<
+    TriageView,
+    { source: { isLoading: boolean; isError: boolean }; cards: ClusterCard[] }
+  > = {
+    all: { source: clusters, cards: feedCards },
+    forYou: { source: suggestionsQuery, cards: suggestedCards },
+    liked: { source: likedQuery, cards: likedCards },
+    hidden: { source: clusters, cards: seenCards },
+    unliked: { source: clusters, cards: unlikedList },
+  };
+  const { source: activeQuery, cards: visible } = tabs[effectiveView];
+  const matches =
+    effectiveView === "forYou"
+      ? new Map(suggestions.map((entry) => [entry.card.clusterId, entry.match]))
+      : undefined;
   // What the list (and keyboard nav) shows: the tab's cards, narrowed to the
   // map viewport when "only in view" is on. Without bounds yet, everything.
   const listed =
@@ -384,6 +440,14 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
           All {allCount}
         </ToggleGroupItem>
         <ToggleGroupItem
+          value="forYou"
+          className="h-8 gap-1 text-xs"
+          title="Houses like the ones you liked or contacted"
+        >
+          <RiSparklingLine className="size-3.5" />
+          For you {suggestionsQuery.data ? suggestedCards.length : ""}
+        </ToggleGroupItem>
+        <ToggleGroupItem
           value="liked"
           className="h-8 gap-1 text-xs"
           disabled={likedCount === 0}
@@ -416,6 +480,14 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
           <RiCloseLine className="size-3.5" />
         </Button>
       )}
+      {effectiveView === "forYou" && (
+        <SuggestionCaps
+          limit={suggestionLimit}
+          radiusKm={suggestionRadiusKm}
+          onLimitChange={setSuggestionLimit}
+          onRadiusChange={setSuggestionRadiusKm}
+        />
+      )}
       {effectiveView === "hidden" && hiddenCount > 0 && (
         <Button
           variant="ghost"
@@ -426,22 +498,23 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
           Restore all
         </Button>
       )}
-      {effectiveView === "all" && listed.length > 0 && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="ml-auto h-8 shrink-0 gap-1.5 text-xs"
-          title={
-            isOnlyInView
-              ? "Mark every house inside the map view as seen"
-              : "Mark every house in this feed as seen"
-          }
-          onClick={handleMarkAllSeen}
-        >
-          <RiCheckDoubleLine className="size-3.5" />
-          Mark {listed.length} seen
-        </Button>
-      )}
+      {(effectiveView === "all" || effectiveView === "forYou") &&
+        listed.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto h-8 shrink-0 gap-1.5 text-xs"
+            title={
+              isOnlyInView
+                ? "Mark every house inside the map view as seen"
+                : "Mark every house in this feed as seen"
+            }
+            onClick={handleMarkAllSeen}
+          >
+            <RiCheckDoubleLine className="size-3.5" />
+            Mark {listed.length} seen
+          </Button>
+        )}
       <Toggle
         variant="outline"
         size="sm"
@@ -477,6 +550,8 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
               in view".
             </p>
           </div>
+        ) : effectiveView === "forYou" ? (
+          <ForYouEmpty exampleCount={exampleCount} />
         ) : (
           <EmptyState view={effectiveView} hasCards={cards.length > 0} />
         )
@@ -490,6 +565,7 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
             isLiked={liked.has(card.clusterId)}
             isHidden={hidden.has(card.clusterId)}
             isExpanded={card.clusterId === expandedId}
+            match={matches?.get(card.clusterId)}
             onSelect={selectAndScroll}
             onToggleExpand={handleToggleExpand}
             onToggleLike={handleToggleLike}
@@ -527,17 +603,23 @@ export function HomeScreen({ authEnabled }: { authEnabled: boolean }) {
       {detailCard && (
         <MapDetailPanel
           key={detailCard.clusterId}
-          card={detailCard}
-          anchorLabel={anchor?.label ?? null}
-          isLiked={liked.has(detailCard.clusterId)}
-          isHidden={hidden.has(detailCard.clusterId)}
-          isExpanded={detailCard.clusterId === expandedId}
-          onToggleExpand={handleToggleExpand}
-          onToggleLike={handleToggleLike}
-          onToggleHide={handleToggleHide}
-          onOpenInList={handleOpenInList}
+          onOpenInList={() => handleOpenInList(detailCard)}
           onClose={handleCloseDetail}
-        />
+        >
+          <Card
+            card={detailCard}
+            anchorLabel={anchor?.label ?? null}
+            isSelected={false}
+            isLiked={liked.has(detailCard.clusterId)}
+            isHidden={hidden.has(detailCard.clusterId)}
+            isExpanded={detailCard.clusterId === expandedId}
+            isDetail
+            match={matches?.get(detailCard.clusterId)}
+            onToggleExpand={handleToggleExpand}
+            onToggleLike={handleToggleLike}
+            onToggleHide={handleToggleHide}
+          />
+        </MapDetailPanel>
       )}
       {/* The legend yields to the panel on a phone, where both sit at the bottom. */}
       <div

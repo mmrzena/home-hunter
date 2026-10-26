@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test worker/lib/*.test.ts worker/sources/*.test.ts",
+    "test": "node --import tsx --test worker/lib/*.test.ts worker/sources/*.test.ts src/lib/*.test.ts",
     "test:integration": "node --import tsx --test worker/durable/*.integration.test.ts",
     "lint": "biome check",
     "lint:fix": "biome check --write",

@@ -162,6 +162,7 @@ export function navigateHref(
  * builds (Vercel included) always require a session.
  */
 export const IS_DEV_WITHOUT_SIGN_IN = process.env.NODE_ENV === "development";
+export const DEV_USER_ID = "local-dev";
 
 /** Pipeline order: what needs you soonest comes first. */
 export const STATUS_ORDER: Record<ContactStatus, number> = {

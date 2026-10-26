@@ -27,6 +27,47 @@ export type ClusterFilters = {
 // Within a comfortable walk of a station — matches the card's "near train" tint.
 const NEAR_TRAIN_KM = 1.5;
 
+const VERDICTS = new Set(["deal", "fair", "overpriced"]);
+const SORTS = new Set<SortKey>([
+  "newest",
+  "priceAsc",
+  "priceDesc",
+  "bestDeal",
+  "distance",
+  "hub",
+  "train",
+]);
+
+/** The feed's filter-bar query string, as the API routes receive it. */
+export function parseClusterFilters(params: URLSearchParams): ClusterFilters {
+  const number = (key: string) => {
+    const value = params.get(key);
+    return value && Number.isFinite(Number(value)) ? Number(value) : undefined;
+  };
+  const verdict = params.get("verdict");
+  const sort = params.get("sort");
+  return {
+    maxPrice: number("maxPrice"),
+    minUsable: number("minUsable"),
+    maxUsable: number("maxUsable"),
+    minLand: number("minLand"),
+    areas: params.getAll("area").length ? params.getAll("area") : undefined,
+    sources: params.getAll("source").length
+      ? params.getAll("source")
+      : undefined,
+    verdict:
+      verdict && VERDICTS.has(verdict)
+        ? (verdict as ClusterFilters["verdict"])
+        : undefined,
+    goodDealsOnly: params.get("goodDeals") === "1",
+    freshOnly: params.get("fresh") === "1",
+    nearTrain: params.get("nearTrain") === "1",
+    maxHubKm: number("maxHub"),
+    kind: params.get("kind") ?? undefined,
+    sort: sort && SORTS.has(sort as SortKey) ? (sort as SortKey) : "newest",
+  };
+}
+
 // biome-ignore lint/suspicious/noExplicitAny: postgres-js fragment type
 type Fragment = any;
 
@@ -122,13 +163,34 @@ function distanceExpr(): Fragment {
     : sql`NULL::float8`;
 }
 
+type SelectOptions = {
+  /** Skip the gallery, description and "also listed at" members — enough to
+   *  rank a house, a fraction of the payload for thousands of rows. */
+  slim?: boolean;
+};
+
 /** The shared cluster SELECT — every caller varies only WHERE / ORDER / LIMIT. */
 async function selectClusters(
   where: Fragment,
   order: Fragment,
   limit: number,
   distance: Fragment,
+  options: SelectOptions = {},
 ): Promise<ClusterCard[]> {
+  const details = options.slim
+    ? sql`'{}'::text[] AS photos, NULL AS description, NULL AS members`
+    : sql`
+      rep.photos                      AS photos,
+      rep.description,
+      (
+        SELECT json_agg(
+          json_build_object(
+            'source', m.source, 'sourceId', m.source_id,
+            'url', m.url, 'price', m.price::float8
+          ) ORDER BY m.price
+        )
+        FROM listings m WHERE m.cluster_id = c.id
+      )                               AS members`;
   const rows = await sql`
     SELECT
       c.id::int                       AS cluster_id,
@@ -145,21 +207,11 @@ async function selectClusters(
       rep.deal_verdict, rep.is_good_deal, rep.scam_score,
       rep.scam_reasons, rep.deal_reasons, rep.price_drop_pct,
       rep.photos[1]                   AS photo,
-      rep.photos                      AS photos,
       rep.first_seen_at               AS first_seen_at,
       (rep.first_seen_at > now() - make_interval(hours => ${env.FEED_WINDOW_HOURS})) AS is_new,
-      rep.description,
       rep.seller_name, rep.seller_type,
       ${distance}                     AS distance_km,
-      (
-        SELECT json_agg(
-          json_build_object(
-            'source', m.source, 'sourceId', m.source_id,
-            'url', m.url, 'price', m.price::float8
-          ) ORDER BY m.price
-        )
-        FROM listings m WHERE m.cluster_id = c.id
-      )                               AS members
+      ${details}
     FROM clusters c
     JOIN listings rep ON rep.id = c.representative_listing_id
     WHERE ${where}
@@ -187,6 +239,7 @@ export async function getClustersByIds(ids: number[]): Promise<ClusterCard[]> {
 
 export async function getClusters(
   filters: ClusterFilters,
+  options: SelectOptions = {},
 ): Promise<ClusterCard[]> {
   const distance = distanceExpr();
 
@@ -223,6 +276,7 @@ export async function getClusters(
     orderBy(filters.sort ?? "newest", distance),
     filters.limit ?? 500,
     distance,
+    options,
   );
 
   // Proximity to the hub town + the nearest station is computed in JS (bundled

@@ -103,9 +103,17 @@ over it (phone). Both are kept in sync.
   sources, area/land, locality, anchor distance, top reasons, and a Sreality link.
 - **Map markers** are colored by status (with a legend); a **header summary**
   shows counts (deals / new / caution) and a refresh button.
-- **Triage bar** (always on screen): All / Liked / Seen tabs, the "only in
-  view" count, **Mark N seen** for everything in the current feed (or map view),
-  and the list toggle.
+- **Triage bar** (always on screen): All / For you / Liked / Seen tabs, the
+  "only in view" count, **Mark N seen** for everything in the current feed (or
+  map view), and the list toggle.
+- **For you**: the filtered feed re-ranked by resemblance to the houses you
+  liked or contacted (`src/lib/suggestion-score.ts`). A weighted profile of
+  your picks, not a model: location counts most, then price, usable and land
+  area, settlement size, kind and train distance, with a small nudge for a good
+  price. A visit verdict or "not interested" pushes its neighbourhood down.
+  Each card says why it is there. Caps: Top 10/25/50 and an optional radius
+  around a picked house; the filter bar applies as on All. Needs at least
+  three liked or contacted houses.
 - **Interaction**: tapping a **marker** opens the house's card in a panel over
   the map (docked right on desktop, bottom on a phone) — same facts as the feed,
   with the chevron revealing the photo gallery, description, and **all "listed
